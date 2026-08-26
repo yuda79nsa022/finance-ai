@@ -1,0 +1,105 @@
+:root {
+  --brand: #0d6efd;
+  --kd-positive: #198754;
+  --kd-negative: #dc3545;
+}
+body { background: #f4f6f9; }
+.card { border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); border-radius: .75rem; }
+.kpi-card { border-radius: .75rem; padding: 1rem 1.25rem; color: #fff; }
+.kpi-card h6 { opacity: .85; font-weight: 500; margin-bottom: .25rem; }
+.kpi-card .value { font-size: 1.5rem; font-weight: 700; }
+.kpi-blue   { background: linear-gradient(135deg,#0d6efd,#3b82f6); }
+.kpi-green  { background: linear-gradient(135deg,#198754,#22c55e); }
+.kpi-red    { background: linear-gradient(135deg,#dc3545,#f87171); }
+.kpi-purple { background: linear-gradient(135deg,#6f42c1,#a78bfa); }
+.kpi-orange { background: linear-gradient(135deg,#fd7e14,#fbbf24); }
+.amount-neg { color: var(--kd-negative); }
+.amount-pos { color: var(--kd-positive); }
+.table thead th { font-size: .8rem; text-transform: uppercase; color: #6c757d; border-bottom-width: 1px; }
+.section-title { font-weight: 700; font-size: 1.05rem; margin: 1.5rem 0 .75rem; padding-bottom: .35rem; border-bottom: 2px solid #e9ecef; }
+
+/* Wizard chat */
+.wizard-shell { max-width: 640px; margin: 0 auto; }
+.wizard-log { height: 55vh; overflow-y: auto; padding: 1rem; }
+.wizard-bubble { max-width: 80%; padding: .6rem 1rem; border-radius: 1rem; margin-bottom: .6rem; }
+.wizard-bubble.bot  { background: #e9ecef; border-bottom-left-radius: .25rem; }
+.wizard-bubble.user { background: var(--brand); color: #fff; margin-left: auto; border-bottom-right-radius: .25rem; }
+.wizard-options .btn { margin: .2rem; }
+
+/* Advisor chat */
+.advisor-log { height: 60vh; overflow-y: auto; padding: 1.25rem; background: #fbfbfc; }
+
+@keyframes advisorBubbleIn {
+  from { opacity: 0; transform: translateY(8px) scale(.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.advisor-row { display: flex; align-items: flex-end; gap: .5rem; margin-bottom: 1rem; animation: advisorBubbleIn .2s ease-out; }
+.advisor-row.user { flex-direction: row-reverse; }
+
+.advisor-avatar {
+  width: 32px; height: 32px; flex: 0 0 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .95rem;
+}
+.advisor-avatar.bot  { background: linear-gradient(135deg, var(--brand), #6ea8fe); color: #fff; }
+.advisor-avatar.user { background: #dee2e6; color: #495057; }
+
+.advisor-bubble-wrap { display: flex; flex-direction: column; max-width: 78%; }
+.advisor-row.user .advisor-bubble-wrap { align-items: flex-end; }
+
+.advisor-bubble { padding: .65rem 1rem; border-radius: 1.1rem; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.advisor-bubble.bot  { background: #fff; border: 1px solid #e9ecef; border-bottom-left-radius: .25rem; }
+.advisor-bubble.user { background: linear-gradient(135deg, var(--brand), #4d8dfd); color: #fff; border-bottom-right-radius: .25rem; white-space: pre-wrap; }
+
+.advisor-time { font-size: .7rem; color: #adb5bd; margin-top: .25rem; padding: 0 .35rem; }
+
+/* Formatted markdown inside a bot reply (see renderMarkdown() in advisor/index.php) */
+.advisor-bubble.bot p { margin: 0 0 .5rem; }
+.advisor-bubble.bot p:last-child { margin-bottom: 0; }
+.advisor-bubble.bot ul, .advisor-bubble.bot ol { margin: 0 0 .5rem; padding-left: 1.25rem; }
+.advisor-bubble.bot ul:last-child, .advisor-bubble.bot ol:last-child { margin-bottom: 0; }
+.advisor-bubble.bot li { margin-bottom: .2rem; }
+.advisor-bubble.bot strong { font-weight: 600; }
+
+/* Typing indicator (three bouncing dots) shown while waiting on the API */
+.advisor-typing { display: flex; align-items: center; gap: 4px; padding: .75rem 1rem; }
+.advisor-typing span {
+  width: 6px; height: 6px; border-radius: 50%; background: #adb5bd;
+  animation: advisorTypingBounce 1.1s infinite ease-in-out;
+}
+.advisor-typing span:nth-child(2) { animation-delay: .15s; }
+.advisor-typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes advisorTypingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* Empty-conversation state with clickable suggestion chips */
+.advisor-empty { padding: 2rem 1rem; }
+.advisor-empty-icon {
+  width: 48px; height: 48px; margin: 0 auto .75rem; border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand), #6ea8fe); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 1.3rem;
+}
+.advisor-suggestions { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; }
+.advisor-suggestion {
+  border: 1px solid #dee2e6; background: #fff; border-radius: 2rem;
+  padding: .4rem .9rem; font-size: .82rem; color: var(--brand); cursor: pointer;
+  transition: background .15s, transform .1s;
+}
+.advisor-suggestion:hover { background: #eef5ff; }
+.advisor-suggestion:active { transform: scale(.97); }
+
+.advisor-conv-list a.active { background: var(--brand); color: #fff; }
+.insight-card { border-left: 4px solid #adb5bd; border-radius: .5rem; padding: .75rem 1rem; margin-bottom: .6rem; background: #fff; }
+.insight-card.critical { border-left-color: var(--kd-negative); background: #fdecea; }
+.insight-card.warning  { border-left-color: #fd7e14; background: #fff8ec; }
+.insight-card.positive { border-left-color: var(--kd-positive); background: #eafaf1; }
+.insight-card.info     { border-left-color: var(--brand); background: #eef5ff; }
+.insight-card .title { font-weight: 700; margin-bottom: .15rem; }
+
+@media print {
+  nav, .no-print { display: none !important; }
+  body { background: #fff; }
+}

@@ -1,0 +1,15 @@
+# Local database credentials — keep config/database.php.example in the repo
+# as the template, but never the real one (even though the XAMPP default is
+# harmless, this keeps the habit correct if the password is ever changed).
+/config/database.php
+
+# Generated at runtime, not part of the app itself
+/storage/backups/*
+/storage/exports/*
+!/storage/backups/.gitkeep
+!/storage/exports/.gitkeep
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
