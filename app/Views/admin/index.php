@@ -7,6 +7,12 @@
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
   </div>
 <?php endif; ?>
+<?php if (!empty($restored)): ?>
+  <div class="alert alert-success alert-dismissible fade show" role="alert">
+    Database restored successfully.
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+<?php endif; ?>
 
 <ul class="nav nav-tabs" id="adminTabs">
   <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#categories">Categories</a></li>

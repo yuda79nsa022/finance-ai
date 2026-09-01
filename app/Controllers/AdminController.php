@@ -35,6 +35,7 @@ class AdminController extends Controller
             'aiSettings'     => AiSettings::get(),
             'aiProviders'    => AIClient::PROVIDER_LABELS,
             'error'          => $this->input('error'),
+            'restored'       => $this->input('restored') === '1',
         ]);
     }
 
@@ -337,26 +338,26 @@ class AdminController extends Controller
     }
 
     // ---- Backup / restore --------------------------------------------------
+    /** Pure-PHP export (Core/DatabaseBackup) — no dependency on the mysqldump CLI binary being installed/allowed, which many shared/managed hosts disable. */
     public function backup(): void
     {
-        $cfg = require dirname(__DIR__, 2) . '/config/database.php';
         $filename = 'backup_' . date('Y-m-d_His') . '.sql';
         $path = dirname(__DIR__, 2) . '/storage/backups/' . $filename;
 
-        $cmd = sprintf(
-            'mysqldump --host=%s --port=%s --user=%s %s %s > %s 2>&1',
-            escapeshellarg($cfg['host']),
-            escapeshellarg($cfg['port']),
-            escapeshellarg($cfg['username']),
-            $cfg['password'] !== '' ? '--password=' . escapeshellarg($cfg['password']) : '',
-            escapeshellarg($cfg['database']),
-            escapeshellarg($path)
-        );
-        exec($cmd, $output, $code);
-
-        if ($code !== 0 || !file_exists($path)) {
-            $this->json(['error' => 'Backup failed. Ensure mysqldump is on PATH (XAMPP: mysql/bin).'], 500);
+        $handle = fopen($path, 'w');
+        if ($handle === false) {
+            $this->json(['error' => 'Backup failed — could not write to storage/backups. Check its folder permissions.'], 500);
+            return;
         }
+
+        try {
+            \App\Core\DatabaseBackup::export($handle);
+        } catch (\Throwable $e) {
+            fclose($handle);
+            $this->json(['error' => 'Backup failed: ' . $e->getMessage()], 500);
+            return;
+        }
+        fclose($handle);
 
         header('Content-Type: application/sql');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
@@ -364,26 +365,27 @@ class AdminController extends Controller
         exit;
     }
 
+    /** Pure-PHP import (Core/DatabaseBackup) — same reasoning as backup(). Overwrites every table in the current database (uploaded file is expected to DROP+CREATE each one, matching backup()'s own format). */
     public function restore(): void
     {
-        if (empty($_FILES['backup_file']['tmp_name'])) {
-            $this->redirect('/admin?error=no-file');
+        if (empty($_FILES['backup_file']['tmp_name']) || ($_FILES['backup_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $this->redirect('/admin?error=' . urlencode('No backup file was received — choose a .sql file and try again.') . '#backup');
+            return;
         }
 
-        $cfg = require dirname(__DIR__, 2) . '/config/database.php';
-        $tmp = $_FILES['backup_file']['tmp_name'];
+        $name = (string) ($_FILES['backup_file']['name'] ?? '');
+        if (!str_ends_with(strtolower($name), '.sql')) {
+            $this->redirect('/admin?error=' . urlencode('Please upload a .sql file (the format this app\'s own Backup produces).') . '#backup');
+            return;
+        }
 
-        $cmd = sprintf(
-            'mysql --host=%s --port=%s --user=%s %s %s < %s 2>&1',
-            escapeshellarg($cfg['host']),
-            escapeshellarg($cfg['port']),
-            escapeshellarg($cfg['username']),
-            $cfg['password'] !== '' ? '--password=' . escapeshellarg($cfg['password']) : '',
-            escapeshellarg($cfg['database']),
-            escapeshellarg($tmp)
-        );
-        exec($cmd, $output, $code);
+        try {
+            \App\Core\DatabaseBackup::import($_FILES['backup_file']['tmp_name']);
+        } catch (\Throwable $e) {
+            $this->redirect('/admin?error=' . urlencode('Restore failed: ' . $e->getMessage()) . '#backup');
+            return;
+        }
 
-        $this->redirect('/admin?restored=' . ($code === 0 ? '1' : '0'));
+        $this->redirect('/admin?restored=1#backup');
     }
 }
