@@ -323,7 +323,12 @@ class MonthController extends Controller
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
 
-        if (empty($_FILES['receipt']['tmp_name']) || $_FILES['receipt']['error'] !== UPLOAD_ERR_OK) {
+        $uploadError = $_FILES['receipt']['error'] ?? UPLOAD_ERR_NO_FILE;
+        if ($uploadError === UPLOAD_ERR_INI_SIZE || $uploadError === UPLOAD_ERR_FORM_SIZE) {
+            $this->json(['ok' => false, 'error' => 'That photo is larger than this server currently accepts (server limit: ' . ini_get('upload_max_filesize') . '). Try a smaller/lower-resolution photo, or enter the expense manually.']);
+            return;
+        }
+        if (empty($_FILES['receipt']['tmp_name']) || $uploadError !== UPLOAD_ERR_OK) {
             $this->json(['ok' => false, 'error' => 'No image was received — choose a photo and try again.']);
             return;
         }
