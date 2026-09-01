@@ -80,7 +80,13 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        IncomeModel::add($month['id'], $this->input('source'), (float) $this->input('amount'), $this->input('notes'));
+        $source = trim((string) $this->input('source', ''));
+        $amount = $this->validAmount($this->input('amount'));
+        if ($source === '' || $amount === null) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Enter a source and an amount greater than zero.'));
+            return;
+        }
+        IncomeModel::add($month['id'], $source, $amount, $this->input('notes'));
         $this->redirect('/month/' . $month['id']);
     }
 
@@ -88,7 +94,13 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        IncomeModel::update((int) $id, $month['id'], $this->input('source'), (float) $this->input('amount'), $this->input('notes'));
+        $source = trim((string) $this->input('source', ''));
+        $amount = $this->validAmount($this->input('amount'));
+        if ($source === '' || $amount === null) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Enter a source and an amount greater than zero.'));
+            return;
+        }
+        IncomeModel::update((int) $id, $month['id'], $source, $amount, $this->input('notes'));
         $this->redirect('/month/' . $month['id']);
     }
 
@@ -104,14 +116,21 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        $item = $this->input('item');
+        $item = trim((string) $this->input('item', ''));
         $categoryId = (int) $this->input('category_id');
+        $amount = $this->validAmount($this->input('amount'));
+        $dueDay = $this->input('due_day');
+        $paymentMethodId = $this->input('payment_method_id');
+        if (!$this->fixedCostInputValid($item, $categoryId, $amount, $dueDay, $paymentMethodId)) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Check the fixed cost fields — an item, a valid category, an amount greater than zero, a due day of 1-31 (or blank), and a valid payment method (or blank) are required.'));
+            return;
+        }
         FixedCostModel::add($month['id'], [
             'item'              => $item,
             'category_id'       => $categoryId,
-            'amount'            => (float) $this->input('amount'),
-            'due_day'           => $this->input('due_day') ?: null,
-            'payment_method_id' => $this->input('payment_method_id') ?: null,
+            'amount'            => $amount,
+            'due_day'           => $dueDay ?: null,
+            'payment_method_id' => $paymentMethodId ?: null,
             'notes'             => $this->input('notes'),
         ]);
         $this->applyLoanOpeningBalance($item, $categoryId, $this->input('opening_balance'), $this->currentUserId());
@@ -123,14 +142,21 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        $item = $this->input('item');
+        $item = trim((string) $this->input('item', ''));
         $categoryId = (int) $this->input('category_id');
+        $amount = $this->validAmount($this->input('amount'));
+        $dueDay = $this->input('due_day');
+        $paymentMethodId = $this->input('payment_method_id');
+        if (!$this->fixedCostInputValid($item, $categoryId, $amount, $dueDay, $paymentMethodId)) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Check the fixed cost fields — an item, a valid category, an amount greater than zero, a due day of 1-31 (or blank), and a valid payment method (or blank) are required.'));
+            return;
+        }
         FixedCostModel::update((int) $id, [
             'item'              => $item,
             'category_id'       => $categoryId,
-            'amount'            => (float) $this->input('amount'),
-            'due_day'           => $this->input('due_day') ?: null,
-            'payment_method_id' => $this->input('payment_method_id') ?: null,
+            'amount'            => $amount,
+            'due_day'           => $dueDay ?: null,
+            'payment_method_id' => $paymentMethodId ?: null,
             'notes'             => $this->input('notes'),
         ], $month['id']);
         $this->applyLoanOpeningBalance($item, $categoryId, $this->input('opening_balance'), $this->currentUserId());
@@ -192,11 +218,11 @@ class MonthController extends Controller
         $name = trim((string) $this->input('name'));
         $type = $this->input('type', 'person') === 'bank' ? 'bank' : 'person';
         $categoryId = $this->categoryIdForLoan($this->input('category_id'), $type);
-        $initialBalance = (float) $this->input('initial_balance', 0);
-        $payment = (float) $this->input('payment', 0);
+        $initialBalance = $this->validNonNegative($this->input('initial_balance', 0));
+        $payment = $this->validNonNegative($this->input('payment', 0));
 
-        if ($name === '') {
-            $this->redirect('/month/' . $month['id']);
+        if ($name === '' || $initialBalance === null || $payment === null) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Enter a lender name and non-negative amounts.'));
             return;
         }
 
@@ -249,8 +275,13 @@ class MonthController extends Controller
         }
         $newType = $this->input('type', 'person') === 'bank' ? 'bank' : 'person';
         $categoryId = $this->categoryIdForLoan($this->input('category_id'), $newType);
-        $initialBalance = (float) $this->input('initial_balance', 0);
-        $payment = (float) $this->input('payment', 0);
+        $initialBalance = $this->validNonNegative($this->input('initial_balance', 0));
+        $payment = $this->validNonNegative($this->input('payment', 0));
+
+        if ($initialBalance === null || $payment === null) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Enter non-negative amounts for the loan.'));
+            return;
+        }
 
         if ($newName !== $lender['name']) {
             FixedCostModel::renameLoanItem($lender['name'], $newName, $userId);
@@ -296,12 +327,20 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
+        $date = $this->validDate($this->input('expense_date'));
+        $amount = $this->validAmount($this->input('amount'));
+        $categoryId = (int) $this->input('category_id');
+        $paymentMethodId = $this->input('payment_method_id');
+        if ($date === null || $amount === null || !$this->categoryValid($categoryId) || !$this->paymentMethodValid($paymentMethodId)) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Check the expense fields — a valid date, a valid category, an amount greater than zero, and a valid payment method (or blank) are required.'));
+            return;
+        }
         ExpenseModel::add($month['id'], [
-            'expense_date'      => $this->input('expense_date'),
-            'amount'            => (float) $this->input('amount'),
-            'category_id'       => (int) $this->input('category_id'),
+            'expense_date'      => $date,
+            'amount'            => $amount,
+            'category_id'       => $categoryId,
             'description'       => $this->input('description'),
-            'payment_method_id' => $this->input('payment_method_id') ?: null,
+            'payment_method_id' => $paymentMethodId ?: null,
             'receipt_path'      => $this->ownedReceiptPath($this->input('receipt_path')),
         ]);
         $this->redirect('/month/' . $month['id']);
@@ -426,12 +465,20 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
+        $date = $this->validDate($this->input('expense_date'));
+        $amount = $this->validAmount($this->input('amount'));
+        $categoryId = (int) $this->input('category_id');
+        $paymentMethodId = $this->input('payment_method_id');
+        if ($date === null || $amount === null || !$this->categoryValid($categoryId) || !$this->paymentMethodValid($paymentMethodId)) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Check the expense fields — a valid date, a valid category, an amount greater than zero, and a valid payment method (or blank) are required.'));
+            return;
+        }
         ExpenseModel::update((int) $id, [
-            'expense_date'      => $this->input('expense_date'),
-            'amount'            => (float) $this->input('amount'),
-            'category_id'       => (int) $this->input('category_id'),
+            'expense_date'      => $date,
+            'amount'            => $amount,
+            'category_id'       => $categoryId,
             'description'       => $this->input('description'),
-            'payment_method_id' => $this->input('payment_method_id') ?: null,
+            'payment_method_id' => $paymentMethodId ?: null,
         ], $month['id']);
         $this->redirect('/month/' . $month['id']);
     }
@@ -483,6 +530,65 @@ class MonthController extends Controller
     }
 
     /** Loads a month only if it belongs to the logged-in user — every user has their own separate tracker, so a month id that exists but belongs to someone else must 404 exactly like one that doesn't exist at all. */
+    /** A real transaction amount: numeric and strictly greater than zero. Returns null (invalid) for anything else, including garbage strings — (float) casting those would otherwise silently become 0. */
+    private function validAmount($value): ?float
+    {
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $amount = (float) $value;
+        return $amount > 0 ? $amount : null;
+    }
+
+    /** For fields that can legitimately be zero (a loan's opening balance or this month's payment before anything's been paid) but never negative or garbage. */
+    private function validNonNegative($value): ?float
+    {
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $amount = (float) $value;
+        return $amount >= 0 ? $amount : null;
+    }
+
+    private function categoryValid(int $id): bool
+    {
+        return Category::find($id) !== null;
+    }
+
+    /** Payment method is always optional — blank passes; a non-blank value must reference a real row, or the FK constraint would otherwise surface as a raw fatal error. */
+    private function paymentMethodValid($value): bool
+    {
+        if ($value === null || $value === '') {
+            return true;
+        }
+        return PaymentMethod::find((int) $value) !== null;
+    }
+
+    private function dueDayValid($value): bool
+    {
+        if ($value === null || $value === '') {
+            return true;
+        }
+        return is_numeric($value) && (int) $value >= 1 && (int) $value <= 31;
+    }
+
+    /** Strict Y-m-d parse — rejects "0000-00-00", "not-a-date", trailing garbage, etc. rather than letting an unparseable string reach the DATE column. */
+    private function validDate($value): ?string
+    {
+        $value = (string) $value;
+        $date = \DateTime::createFromFormat('Y-m-d', $value);
+        return ($date && $date->format('Y-m-d') === $value) ? $value : null;
+    }
+
+    private function fixedCostInputValid(string $item, int $categoryId, ?float $amount, $dueDay, $paymentMethodId): bool
+    {
+        return $item !== ''
+            && $amount !== null
+            && $this->categoryValid($categoryId)
+            && $this->dueDayValid($dueDay)
+            && $this->paymentMethodValid($paymentMethodId);
+    }
+
     private function requireMonth(int $id): array
     {
         $month = MonthModel::findOwned($id, $this->currentUserId());

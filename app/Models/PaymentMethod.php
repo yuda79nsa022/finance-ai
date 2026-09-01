@@ -11,6 +11,13 @@ class PaymentMethod
         return Database::connection()->query("SELECT * FROM payment_methods ORDER BY id")->fetchAll();
     }
 
+    public static function find(int $id): ?array
+    {
+        $stmt = Database::connection()->prepare("SELECT * FROM payment_methods WHERE id = ?");
+        $stmt->execute([$id]);
+        return $stmt->fetch() ?: null;
+    }
+
     public static function create(string $name): int
     {
         $stmt = Database::connection()->prepare("INSERT INTO payment_methods (name) VALUES (?)");

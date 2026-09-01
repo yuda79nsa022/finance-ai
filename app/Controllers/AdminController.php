@@ -151,14 +151,48 @@ class AdminController extends Controller
     // ---- Categories --------------------------------------------------
     public function addCategory(): void
     {
-        Category::create($this->input('name'), $this->input('type', 'expense'));
+        $name = trim((string) $this->input('name', ''));
+        $type = $this->categoryType($this->input('type', 'expense'));
+        if ($name === '') {
+            $this->redirect('/admin?error=' . urlencode('Category name is required.') . '#categories');
+            return;
+        }
+        try {
+            Category::create($name, $type);
+        } catch (\PDOException $e) {
+            if ((int) $e->getCode() === 23000) {
+                $this->redirect('/admin?error=' . urlencode('A category with that name already exists.') . '#categories');
+                return;
+            }
+            throw $e;
+        }
         $this->redirect('/admin#categories');
     }
 
     public function updateCategory(string $id): void
     {
-        Category::update((int) $id, $this->input('name'), $this->input('type', 'expense'));
+        $name = trim((string) $this->input('name', ''));
+        $type = $this->categoryType($this->input('type', 'expense'));
+        if ($name === '') {
+            $this->redirect('/admin?error=' . urlencode('Category name is required.') . '#categories');
+            return;
+        }
+        try {
+            Category::update((int) $id, $name, $type);
+        } catch (\PDOException $e) {
+            if ((int) $e->getCode() === 23000) {
+                $this->redirect('/admin?error=' . urlencode('A category with that name already exists.') . '#categories');
+                return;
+            }
+            throw $e;
+        }
         $this->redirect('/admin#categories');
+    }
+
+    /** Category.type is an ENUM('expense','savings','loan') — anything else submitted falls back to 'expense' rather than letting a tampered value hit the DB as an invalid enum value. */
+    private function categoryType($value): string
+    {
+        return in_array($value, ['expense', 'savings', 'loan'], true) ? $value : 'expense';
     }
 
     public function deactivateCategory(string $id): void
@@ -197,7 +231,23 @@ class AdminController extends Controller
     // ---- Lenders --------------------------------------------------------
     public function addLender(): void
     {
-        Lender::create($this->currentUserId(), $this->input('name'), (float) $this->input('initial_balance', 0), $this->input('type', 'person'), 0);
+        $name = trim((string) $this->input('name', ''));
+        $initialBalanceInput = $this->input('initial_balance', 0);
+        $initialBalance = is_numeric($initialBalanceInput) ? (float) $initialBalanceInput : null;
+        $type = $this->input('type', 'person') === 'bank' ? 'bank' : 'person';
+        if ($name === '' || $initialBalance === null || $initialBalance < 0) {
+            $this->redirect('/admin?error=' . urlencode('Enter a lender name and a non-negative opening balance.') . '#lenders');
+            return;
+        }
+        try {
+            Lender::create($this->currentUserId(), $name, $initialBalance, $type, 0);
+        } catch (\PDOException $e) {
+            if ((int) $e->getCode() === 23000) {
+                $this->redirect('/admin?error=' . urlencode('You already have a lender with that name.') . '#lenders');
+                return;
+            }
+            throw $e;
+        }
         $this->redirect('/admin#lenders');
     }
 
@@ -236,9 +286,25 @@ class AdminController extends Controller
     public function createFinancialYear(): void
     {
         $userId = $this->currentUserId();
-        $label = $this->input('label');
-        $start = $this->input('start_month'); // YYYY-MM-01
-        $end   = $this->input('end_month');
+        $label = trim((string) $this->input('label', ''));
+        $start = (string) $this->input('start_month', ''); // YYYY-MM-DD
+        $end   = (string) $this->input('end_month', '');
+
+        $startDate = \DateTime::createFromFormat('Y-m-d', $start);
+        $endDate = \DateTime::createFromFormat('Y-m-d', $end);
+        $datesValid = $startDate && $startDate->format('Y-m-d') === $start && $endDate && $endDate->format('Y-m-d') === $end;
+        if ($label === '' || !$datesValid || $startDate >= $endDate) {
+            $this->redirect('/admin?error=' . urlencode('Enter a label and a start month before the end month.') . '#financial-years');
+            return;
+        }
+        // Guards against an accidental fat-fingered range creating thousands of
+        // month rows — the loop below creates one row per calendar month.
+        $monthSpan = ($endDate->diff($startDate)->y * 12) + $endDate->diff($startDate)->m + 1;
+        if ($monthSpan > 120) {
+            $this->redirect('/admin?error=' . urlencode('That date range is too large (max 10 years) — check the start/end months.') . '#financial-years');
+            return;
+        }
+
         $yearId = FinancialYear::create($userId, $label, $start, $end);
 
         // Auto-generate the 12 monthly records (equivalent of the 12 duplicated sheets)
