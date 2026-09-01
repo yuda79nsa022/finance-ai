@@ -6,8 +6,10 @@
 # Generated at runtime, not part of the app itself
 /storage/backups/*
 /storage/exports/*
+/storage/receipts/*
 !/storage/backups/.gitkeep
 !/storage/exports/.gitkeep
+!/storage/receipts/.gitkeep
 
 # OS / editor cruft
 .DS_Store

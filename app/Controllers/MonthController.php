@@ -2,8 +2,10 @@
 
 namespace App\Controllers;
 
+use App\Core\AIClient;
 use App\Core\Controller;
 use App\Core\MonthCalculator;
+use App\Core\ReceiptScanner;
 use App\Models\Category;
 use App\Models\ExpenseModel;
 use App\Models\FixedCostModel;
@@ -86,7 +88,7 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        IncomeModel::update((int) $id, $this->input('source'), (float) $this->input('amount'), $this->input('notes'));
+        IncomeModel::update((int) $id, $month['id'], $this->input('source'), (float) $this->input('amount'), $this->input('notes'));
         $this->redirect('/month/' . $month['id']);
     }
 
@@ -94,7 +96,7 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        IncomeModel::delete((int) $id);
+        IncomeModel::delete((int) $id, $month['id']);
         $this->redirect('/month/' . $monthId);
     }
 
@@ -130,7 +132,7 @@ class MonthController extends Controller
             'due_day'           => $this->input('due_day') ?: null,
             'payment_method_id' => $this->input('payment_method_id') ?: null,
             'notes'             => $this->input('notes'),
-        ]);
+        ], $month['id']);
         $this->applyLoanOpeningBalance($item, $categoryId, $this->input('opening_balance'), $this->currentUserId());
         LoanLedgerModel::recalculateMonth($month['id']); // amount may feed a lender's installment
         $this->redirect('/month/' . $month['id']);
@@ -176,7 +178,7 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        FixedCostModel::delete((int) $id);
+        FixedCostModel::delete((int) $id, $month['id']);
         LoanLedgerModel::recalculateMonth((int) $monthId);
         $this->redirect('/month/' . $monthId);
     }
@@ -264,7 +266,7 @@ class MonthController extends Controller
                 'due_day'           => $existingRow['due_day'],
                 'payment_method_id' => $existingRow['payment_method_id'],
                 'notes'             => $existingRow['notes'],
-            ]);
+            ], $month['id']);
         } elseif ($payment > 0) {
             FixedCostModel::add($month['id'], [
                 'item'        => $newName,
@@ -300,8 +302,119 @@ class MonthController extends Controller
             'category_id'       => (int) $this->input('category_id'),
             'description'       => $this->input('description'),
             'payment_method_id' => $this->input('payment_method_id') ?: null,
+            'receipt_path'      => $this->ownedReceiptPath($this->input('receipt_path')),
         ]);
         $this->redirect('/month/' . $month['id']);
+    }
+
+    /**
+     * Uploads a receipt photo and asks the configured AI provider (Settings
+     * > AI Advisor — Anthropic/OpenAI only, see AIClient::visionExtract())
+     * to read it: date, amount, merchant, and a best-guess category from
+     * this app's own category list. Returns the extracted fields as JSON
+     * for the Add Expense form to pre-fill — nothing is saved to the
+     * Variable Expenses Log here; the user still reviews and clicks Add,
+     * same as manual entry, since a misread amount/category is exactly the
+     * kind of mistake that must be easy to catch before it becomes real
+     * financial data.
+     */
+    public function scanReceipt(string $monthId): void
+    {
+        $month = $this->requireMonth((int) $monthId);
+        $this->denyIfLocked($month);
+
+        if (empty($_FILES['receipt']['tmp_name']) || $_FILES['receipt']['error'] !== UPLOAD_ERR_OK) {
+            $this->json(['ok' => false, 'error' => 'No image was received — choose a photo and try again.']);
+            return;
+        }
+
+        $tmpPath = $_FILES['receipt']['tmp_name'];
+        if ((int) $_FILES['receipt']['size'] > 8 * 1024 * 1024) {
+            $this->json(['ok' => false, 'error' => 'That image is too large (max 8MB) — try a smaller photo.']);
+            return;
+        }
+
+        $mime = function_exists('mime_content_type') ? mime_content_type($tmpPath) : (string) ($_FILES['receipt']['type'] ?? '');
+        $allowedExtensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/heic' => 'heic', 'image/heif' => 'heif'];
+        if (!isset($allowedExtensions[$mime])) {
+            $this->json(['ok' => false, 'error' => 'Please upload a JPG, PNG, WEBP, or HEIC photo of the receipt.']);
+            return;
+        }
+
+        if (!AIClient::isConfigured()) {
+            $this->json(['ok' => false, 'error' => 'Receipt scanning needs the AI Advisor configured first — ask an admin to add a Claude or ChatGPT API key in Settings > AI Advisor. You can still add this expense manually.']);
+            return;
+        }
+
+        $userId = $this->currentUserId();
+        $dir = dirname(__DIR__, 2) . '/storage/receipts/' . $userId;
+        if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
+            $this->json(['ok' => false, 'error' => 'Could not save the uploaded image on the server.']);
+            return;
+        }
+        $filename = bin2hex(random_bytes(16)) . '.' . $allowedExtensions[$mime];
+        if (!move_uploaded_file($tmpPath, $dir . '/' . $filename)) {
+            $this->json(['ok' => false, 'error' => 'Could not save the uploaded image on the server.']);
+            return;
+        }
+
+        $result = ReceiptScanner::extract($dir . '/' . $filename, $mime, Category::all());
+        $result['receipt_path'] = $userId . '/' . $filename; // kept even on ok:false, so a failed read can still be attached manually
+        $this->json($result);
+    }
+
+    /** Streams a receipt image back only to the user who owns the expense it's attached to — never served directly, always through this ownership check. */
+    public function receiptImage(string $monthId, string $expenseId): void
+    {
+        $month = $this->requireMonth((int) $monthId);
+        $expense = ExpenseModel::find((int) $expenseId, $month['id']);
+        if (!$expense || empty($expense['receipt_path'])) {
+            http_response_code(404);
+            echo 'Receipt not found.';
+            exit;
+        }
+
+        $base = realpath(dirname(__DIR__, 2) . '/storage/receipts');
+        $path = realpath($base . '/' . $expense['receipt_path']);
+        if ($base === false || $path === false || !str_starts_with($path, $base . DIRECTORY_SEPARATOR)) {
+            http_response_code(404);
+            echo 'Receipt not found.';
+            exit;
+        }
+
+        header('Content-Type: ' . (function_exists('mime_content_type') ? mime_content_type($path) : 'application/octet-stream'));
+        header('Cache-Control: private, max-age=3600');
+        header('Content-Disposition: inline; filename="receipt.' . pathinfo($path, PATHINFO_EXTENSION) . '"');
+        readfile($path);
+        exit;
+    }
+
+    /**
+     * Only trusts a receipt_path that (a) is prefixed with this user's own
+     * id (scanReceipt() always saves under storage/receipts/{userId}/, so a
+     * legitimately-scanned path always starts that way) and (b) resolves to
+     * a real file actually inside storage/receipts — rejects everything
+     * else rather than trusting client input, since this value comes back
+     * from a hidden form field the browser could have tampered with to
+     * point at another user's uploaded receipt or an arbitrary path.
+     */
+    private function ownedReceiptPath($path): ?string
+    {
+        $path = trim((string) $path);
+        if ($path === '') {
+            return null;
+        }
+        if (!str_starts_with($path, $this->currentUserId() . '/')) {
+            return null;
+        }
+
+        $base = realpath(dirname(__DIR__, 2) . '/storage/receipts');
+        $resolved = realpath($base . '/' . $path);
+        if ($base === false || $resolved === false || !str_starts_with($resolved, $base . DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+
+        return $path;
     }
 
     public function updateExpense(string $monthId, string $id): void
@@ -314,7 +427,7 @@ class MonthController extends Controller
             'category_id'       => (int) $this->input('category_id'),
             'description'       => $this->input('description'),
             'payment_method_id' => $this->input('payment_method_id') ?: null,
-        ]);
+        ], $month['id']);
         $this->redirect('/month/' . $month['id']);
     }
 
@@ -322,20 +435,23 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        ExpenseModel::delete((int) $id);
+        ExpenseModel::delete((int) $id, $month['id']);
         $this->redirect('/month/' . $monthId);
     }
 
+    /** Ownership-checked like every other write in this controller — lock/unlock previously skipped this and let any logged-in user toggle any other user's month by id. */
     public function lock(string $monthId): void
     {
-        MonthModel::setLocked((int) $monthId, true);
-        $this->redirect('/month/' . $monthId);
+        $month = $this->requireMonth((int) $monthId);
+        MonthModel::setLocked($month['id'], true);
+        $this->redirect('/month/' . $month['id']);
     }
 
     public function unlock(string $monthId): void
     {
-        MonthModel::setLocked((int) $monthId, false);
-        $this->redirect('/month/' . $monthId);
+        $month = $this->requireMonth((int) $monthId);
+        MonthModel::setLocked($month['id'], false);
+        $this->redirect('/month/' . $month['id']);
     }
 
     /** Duplicate this month's Fixed Costs + Income into the next calendar month within the same financial year. */

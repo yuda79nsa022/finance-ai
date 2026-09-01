@@ -26,18 +26,18 @@
             <td>
               <button type="button" class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editCategory<?= $c['id'] ?>">Edit</button>
               <?php if ($c['is_active']): ?>
-              <form method="post" action="<?= base_url('/admin/category/' . $c['id'] . '/deactivate') ?>" class="d-inline">
+              <form method="post" action="<?= base_url('/admin/category/' . $c['id'] . '/deactivate') ?>" class="d-inline"><?= csrf_field() ?>
                 <button class="btn btn-sm btn-outline-danger">Deactivate</button>
               </form>
               <?php else: ?>
-              <form method="post" action="<?= base_url('/admin/category/' . $c['id'] . '/activate') ?>" class="d-inline">
+              <form method="post" action="<?= base_url('/admin/category/' . $c['id'] . '/activate') ?>" class="d-inline"><?= csrf_field() ?>
                 <button class="btn btn-sm btn-outline-success">Activate</button>
               </form>
               <?php endif; ?>
 
               <div class="modal fade" id="editCategory<?= $c['id'] ?>" tabindex="-1">
                 <div class="modal-dialog">
-                  <form method="post" action="<?= base_url('/admin/category/' . $c['id'] . '/update') ?>" class="modal-content">
+                  <form method="post" action="<?= base_url('/admin/category/' . $c['id'] . '/update') ?>" class="modal-content"><?= csrf_field() ?>
                     <div class="modal-header"><h5 class="modal-title">Edit Category</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                     <div class="modal-body">
                       <div class="mb-2"><label class="form-label">Name</label><input class="form-control" name="name" value="<?= e($c['name']) ?>" required></div>
@@ -62,7 +62,7 @@
         <?php endforeach; ?>
         </tbody>
       </table>
-      <form method="post" action="<?= base_url('/admin/category') ?>" class="row g-2 mt-2">
+      <form method="post" action="<?= base_url('/admin/category') ?>" class="row g-2 mt-2"><?= csrf_field() ?>
         <div class="col-md-5"><input class="form-control" name="name" placeholder="New category name" required></div>
         <div class="col-md-4">
           <select class="form-select" name="type">
@@ -85,7 +85,7 @@
           <tr>
             <td><?= e($p['name']) ?></td>
             <td>
-              <form method="post" action="<?= base_url('/admin/payment-method/' . $p['id'] . '/delete') ?>" onsubmit="return confirm('Delete this payment method?')">
+              <form method="post" action="<?= base_url('/admin/payment-method/' . $p['id'] . '/delete') ?>" onsubmit="return confirm('Delete this payment method?')"><?= csrf_field() ?>
                 <button class="btn btn-sm btn-outline-danger">Delete</button>
               </form>
             </td>
@@ -93,7 +93,7 @@
         <?php endforeach; ?>
         </tbody>
       </table>
-      <form method="post" action="<?= base_url('/admin/payment-method') ?>" class="row g-2 mt-2">
+      <form method="post" action="<?= base_url('/admin/payment-method') ?>" class="row g-2 mt-2"><?= csrf_field() ?>
         <div class="col-md-9"><input class="form-control" name="name" placeholder="New payment method" required></div>
         <div class="col-md-3"><button class="btn btn-primary w-100">Add</button></div>
       </form>
@@ -113,11 +113,11 @@
             <td><?= $l['is_active'] ? 'Yes' : 'No' ?></td>
             <td>
               <?php if ($l['is_active']): ?>
-              <form method="post" action="<?= base_url('/admin/lender/' . $l['id'] . '/deactivate') ?>" onsubmit="return confirm('Remove ' + <?= json_encode($l['name']) ?> + ' from the Loan Tracker going forward? Past months keep their history.')">
+              <form method="post" action="<?= base_url('/admin/lender/' . $l['id'] . '/deactivate') ?>" onsubmit="return confirm('Remove ' + <?= json_encode($l['name']) ?> + ' from the Loan Tracker going forward? Past months keep their history.')"><?= csrf_field() ?>
                 <button class="btn btn-sm btn-outline-danger">Remove</button>
               </form>
               <?php else: ?>
-              <form method="post" action="<?= base_url('/admin/lender/' . $l['id'] . '/activate') ?>">
+              <form method="post" action="<?= base_url('/admin/lender/' . $l['id'] . '/activate') ?>"><?= csrf_field() ?>
                 <button class="btn btn-sm btn-outline-success">Restore</button>
               </form>
               <?php endif; ?>
@@ -126,7 +126,7 @@
         <?php endforeach; ?>
         </tbody>
       </table>
-      <form method="post" action="<?= base_url('/admin/lender') ?>" class="row g-2 mt-2">
+      <form method="post" action="<?= base_url('/admin/lender') ?>" class="row g-2 mt-2"><?= csrf_field() ?>
         <div class="col-md-4"><input class="form-control" name="name" placeholder="New lender name" required></div>
         <div class="col-md-3">
           <select class="form-select" name="type">
@@ -150,7 +150,7 @@
         <?php endforeach; ?>
         </tbody>
       </table>
-      <form method="post" action="<?= base_url('/admin/financial-year') ?>" class="row g-2 mt-2">
+      <form method="post" action="<?= base_url('/admin/financial-year') ?>" class="row g-2 mt-2"><?= csrf_field() ?>
         <div class="col-md-4"><input class="form-control" name="label" placeholder="Label e.g. Aug 2026 to Jul 2027" required></div>
         <div class="col-md-3"><input class="form-control" name="start_month" type="date" required></div>
         <div class="col-md-3"><input class="form-control" name="end_month" type="date" required></div>
@@ -164,7 +164,7 @@
       <h6>Backup</h6>
       <a class="btn btn-outline-primary mb-3" href="<?= base_url('/admin/backup') ?>">Download Database Backup (.sql)</a>
       <h6>Restore</h6>
-      <form method="post" action="<?= base_url('/admin/restore') ?>" enctype="multipart/form-data" class="row g-2">
+      <form method="post" action="<?= base_url('/admin/restore') ?>" enctype="multipart/form-data" class="row g-2"><?= csrf_field() ?>
         <div class="col-md-8"><input class="form-control" type="file" name="backup_file" accept=".sql" required></div>
         <div class="col-md-4"><button class="btn btn-warning w-100" onclick="return confirm('This will overwrite existing data. Continue?')">Restore</button></div>
       </form>
@@ -190,11 +190,11 @@
             <td><?= $u['is_active'] ? 'Yes' : 'No' ?></td>
             <td>
               <?php if ($u['is_active']): ?>
-              <form method="post" action="<?= base_url('/admin/user/' . $u['id'] . '/deactivate') ?>" class="d-inline">
+              <form method="post" action="<?= base_url('/admin/user/' . $u['id'] . '/deactivate') ?>" class="d-inline"><?= csrf_field() ?>
                 <button class="btn btn-sm btn-outline-danger">Deactivate</button>
               </form>
               <?php else: ?>
-              <form method="post" action="<?= base_url('/admin/user/' . $u['id'] . '/activate') ?>" class="d-inline">
+              <form method="post" action="<?= base_url('/admin/user/' . $u['id'] . '/activate') ?>" class="d-inline"><?= csrf_field() ?>
                 <button class="btn btn-sm btn-outline-success">Activate</button>
               </form>
               <?php endif; ?>
@@ -202,7 +202,7 @@
 
               <div class="modal fade" id="resetPassword<?= $u['id'] ?>" tabindex="-1">
                 <div class="modal-dialog">
-                  <form method="post" action="<?= base_url('/admin/user/' . $u['id'] . '/reset-password') ?>" class="modal-content">
+                  <form method="post" action="<?= base_url('/admin/user/' . $u['id'] . '/reset-password') ?>" class="modal-content"><?= csrf_field() ?>
                     <div class="modal-header"><h5 class="modal-title">Reset Password — <?= e($u['name']) ?></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                     <div class="modal-body">
                       <label class="form-label">New Password</label>
@@ -221,7 +221,7 @@
         <?php endforeach; ?>
         </tbody>
       </table>
-      <form method="post" action="<?= base_url('/admin/user') ?>" class="row g-2 mt-2">
+      <form method="post" action="<?= base_url('/admin/user') ?>" class="row g-2 mt-2"><?= csrf_field() ?>
         <div class="col-md-3"><input class="form-control" name="name" placeholder="Name" required></div>
         <div class="col-md-3"><input class="form-control" name="email" type="email" placeholder="Email" required></div>
         <div class="col-md-2"><input class="form-control" name="password" type="password" placeholder="Password" required></div>
@@ -246,7 +246,7 @@
         <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a> for ChatGPT,
         or <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a> for DeepSeek.
       </p>
-      <form method="post" action="<?= base_url('/admin/ai-settings') ?>" class="row g-2" style="max-width: 640px">
+      <form method="post" action="<?= base_url('/admin/ai-settings') ?>" class="row g-2" style="max-width: 640px"><?= csrf_field() ?>
         <div class="col-md-12">
           <label class="form-label">Provider</label>
           <select class="form-select" name="provider">

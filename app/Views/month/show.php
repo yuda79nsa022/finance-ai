@@ -17,15 +17,15 @@ $locked = (bool) $month['is_locked'];
     <a href="<?= base_url('/month/' . $month['id'] . '?print=1') ?>" class="btn btn-outline-secondary" target="_blank"><i class="bi bi-printer"></i> Print</a>
     <a href="<?= base_url('/reports/month/' . $month['id'] . '/pdf') ?>" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
     <a href="<?= base_url('/reports/month/' . $month['id'] . '/csv') ?>" class="btn btn-outline-secondary"><i class="bi bi-filetype-csv"></i> CSV</a>
-    <form method="post" action="<?= base_url('/month/' . $month['id'] . '/duplicate') ?>" class="d-inline">
+    <form method="post" action="<?= base_url('/month/' . $month['id'] . '/duplicate') ?>" class="d-inline"><?= csrf_field() ?>
       <button class="btn btn-outline-secondary"><i class="bi bi-files"></i> Duplicate to Next Month</button>
     </form>
     <?php if ($locked): ?>
-      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/unlock') ?>" class="d-inline">
+      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/unlock') ?>" class="d-inline"><?= csrf_field() ?>
         <button class="btn btn-outline-warning"><i class="bi bi-unlock"></i> Unlock</button>
       </form>
     <?php else: ?>
-      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/lock') ?>" class="d-inline">
+      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/lock') ?>" class="d-inline"><?= csrf_field() ?>
         <button class="btn btn-outline-warning"><i class="bi bi-lock"></i> Lock</button>
       </form>
     <?php endif; ?>
@@ -50,13 +50,13 @@ $locked = (bool) $month['is_locked'];
             <td class="no-print">
               <?php if (!$locked): ?>
               <button type="button" class="btn btn-sm btn-link p-0 me-2" data-bs-toggle="modal" data-bs-target="#editIncome<?= $row['id'] ?>"><i class="bi bi-pencil"></i></button>
-              <form method="post" action="<?= base_url('/month/' . $month['id'] . '/income/' . $row['id'] . '/delete') ?>" class="d-inline" onsubmit="return confirm('Remove this income line?')">
+              <form method="post" action="<?= base_url('/month/' . $month['id'] . '/income/' . $row['id'] . '/delete') ?>" class="d-inline" onsubmit="return confirm('Remove this income line?')"><?= csrf_field() ?>
                 <button class="btn btn-sm btn-link text-danger p-0"><i class="bi bi-trash"></i></button>
               </form>
 
               <div class="modal fade" id="editIncome<?= $row['id'] ?>" tabindex="-1">
                 <div class="modal-dialog">
-                  <form method="post" action="<?= base_url('/month/' . $month['id'] . '/income/' . $row['id'] . '/update') ?>" class="modal-content">
+                  <form method="post" action="<?= base_url('/month/' . $month['id'] . '/income/' . $row['id'] . '/update') ?>" class="modal-content"><?= csrf_field() ?>
                     <div class="modal-header"><h5 class="modal-title">Edit Income</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                     <div class="modal-body">
                       <div class="mb-2"><label class="form-label">Source</label><input class="form-control" name="source" value="<?= e($row['source']) ?>" required></div>
@@ -78,7 +78,7 @@ $locked = (bool) $month['is_locked'];
         <tfoot class="fw-bold"><tr><td>Total Salary</td><td class="text-end"><?= fmt_kd($summary['salary']) ?></td><td colspan="2"></td></tr></tfoot>
       </table>
       <?php if (!$locked): ?>
-      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/income') ?>" class="row g-2 no-print">
+      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/income') ?>" class="row g-2 no-print"><?= csrf_field() ?>
         <div class="col-4"><input class="form-control form-control-sm" name="source" placeholder="Source" required></div>
         <div class="col-3"><input class="form-control form-control-sm" name="amount" type="number" step="0.001" placeholder="Amount" required></div>
         <div class="col-3"><input class="form-control form-control-sm" name="notes" placeholder="Notes"></div>
@@ -105,13 +105,13 @@ $locked = (bool) $month['is_locked'];
             <td class="no-print">
               <?php if (!$locked): ?>
               <button type="button" class="btn btn-sm btn-link p-0 me-2" data-bs-toggle="modal" data-bs-target="#editFixedCost<?= $row['id'] ?>"><i class="bi bi-pencil"></i></button>
-              <form method="post" action="<?= base_url('/month/' . $month['id'] . '/fixed-cost/' . $row['id'] . '/delete') ?>" class="d-inline" onsubmit="return confirm('Remove this fixed cost?')">
+              <form method="post" action="<?= base_url('/month/' . $month['id'] . '/fixed-cost/' . $row['id'] . '/delete') ?>" class="d-inline" onsubmit="return confirm('Remove this fixed cost?')"><?= csrf_field() ?>
                 <button class="btn btn-sm btn-link text-danger p-0"><i class="bi bi-trash"></i></button>
               </form>
 
               <div class="modal fade" id="editFixedCost<?= $row['id'] ?>" tabindex="-1">
                 <div class="modal-dialog">
-                  <form method="post" action="<?= base_url('/month/' . $month['id'] . '/fixed-cost/' . $row['id'] . '/update') ?>" class="modal-content">
+                  <form method="post" action="<?= base_url('/month/' . $month['id'] . '/fixed-cost/' . $row['id'] . '/update') ?>" class="modal-content"><?= csrf_field() ?>
                     <div class="modal-header"><h5 class="modal-title">Edit Fixed Cost</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                     <div class="modal-body">
                       <div class="mb-2"><label class="form-label">Item</label><input class="form-control" name="item" value="<?= e($row['item']) ?>" required></div>
@@ -154,7 +154,7 @@ $locked = (bool) $month['is_locked'];
       </table>
       </div>
       <?php if (!$locked): ?>
-      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/fixed-cost') ?>" class="row g-2 no-print">
+      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/fixed-cost') ?>" class="row g-2 no-print"><?= csrf_field() ?>
         <div class="col-md-3"><input class="form-control form-control-sm" name="item" placeholder="Item" required></div>
         <div class="col-md-2">
           <select class="form-select form-select-sm fc-category-select" name="category_id" data-loan-ids="<?= e(json_encode(array_map(fn($lc) => (int) $lc['id'], $loanCategories))) ?>" required>
@@ -214,7 +214,7 @@ $locked = (bool) $month['is_locked'];
           <strong><?= e($row['lender_name']) ?>'s loan has been paid off!</strong>
           Its balance is fully paid off. Do you want to remove it from the Loan Tracker?
           <?php if (!$locked): ?>
-            <form method="post" action="<?= base_url('/month/' . $month['id'] . '/loan/' . $row['lender_id'] . '/delete') ?>" class="d-inline ms-2" onsubmit="return confirm('Remove ' + <?= json_encode($row['lender_name']) ?> + ' from the Loan Tracker? Past months keep their history — this only stops it appearing going forward.')">
+            <form method="post" action="<?= base_url('/month/' . $month['id'] . '/loan/' . $row['lender_id'] . '/delete') ?>" class="d-inline ms-2" onsubmit="return confirm('Remove ' + <?= json_encode($row['lender_name']) ?> + ' from the Loan Tracker? Past months keep their history — this only stops it appearing going forward.')"><?= csrf_field() ?>
               <button class="btn btn-sm btn-success">Yes, remove it</button>
             </form>
           <?php endif; ?>
@@ -241,13 +241,13 @@ $locked = (bool) $month['is_locked'];
             <td class="no-print">
               <?php if (!$locked): ?>
               <button type="button" class="btn btn-sm btn-link p-0 me-2" data-bs-toggle="modal" data-bs-target="#editLoan<?= $row['lender_id'] ?>"><i class="bi bi-pencil"></i></button>
-              <form method="post" action="<?= base_url('/month/' . $month['id'] . '/loan/' . $row['lender_id'] . '/delete') ?>" class="d-inline" onsubmit="return confirm('Remove ' + <?= json_encode($row['lender_name']) ?> + ' from the Loan Tracker starting this month? Past months keep their history.')">
+              <form method="post" action="<?= base_url('/month/' . $month['id'] . '/loan/' . $row['lender_id'] . '/delete') ?>" class="d-inline" onsubmit="return confirm('Remove ' + <?= json_encode($row['lender_name']) ?> + ' from the Loan Tracker starting this month? Past months keep their history.')"><?= csrf_field() ?>
                 <button class="btn btn-sm btn-link text-danger p-0"><i class="bi bi-trash"></i></button>
               </form>
 
               <div class="modal fade" id="editLoan<?= $row['lender_id'] ?>" tabindex="-1">
                 <div class="modal-dialog">
-                  <form method="post" action="<?= base_url('/month/' . $month['id'] . '/loan/' . $row['lender_id'] . '/update') ?>" class="modal-content">
+                  <form method="post" action="<?= base_url('/month/' . $month['id'] . '/loan/' . $row['lender_id'] . '/update') ?>" class="modal-content"><?= csrf_field() ?>
                     <div class="modal-header"><h5 class="modal-title">Edit Loan</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                     <div class="modal-body">
                       <div class="mb-2"><label class="form-label">Lender Name</label><input class="form-control" name="name" value="<?= e($row['lender_name']) ?>" required></div>
@@ -287,7 +287,7 @@ $locked = (bool) $month['is_locked'];
       </table>
 
       <?php if (!$locked): ?>
-      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/loan') ?>" class="row g-2 no-print">
+      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/loan') ?>" class="row g-2 no-print"><?= csrf_field() ?>
         <div class="col-md-2"><input class="form-control form-control-sm" name="name" placeholder="Lender name" required></div>
         <div class="col-md-2">
           <select class="form-select form-select-sm" name="category_id">
@@ -325,15 +325,18 @@ $locked = (bool) $month['is_locked'];
             <td><?= e($row['description'] ?? '') ?></td>
             <td><?= e($row['payment_method_name'] ?? '') ?></td>
             <td class="no-print">
+              <?php if (!empty($row['receipt_path'])): ?>
+              <a href="<?= base_url('/month/' . $month['id'] . '/expense/' . $row['id'] . '/receipt') ?>" target="_blank" class="btn btn-sm btn-link p-0 me-2" title="View receipt"><i class="bi bi-image"></i></a>
+              <?php endif; ?>
               <?php if (!$locked): ?>
               <button type="button" class="btn btn-sm btn-link p-0 me-2" data-bs-toggle="modal" data-bs-target="#editExpense<?= $row['id'] ?>"><i class="bi bi-pencil"></i></button>
-              <form method="post" action="<?= base_url('/month/' . $month['id'] . '/expense/' . $row['id'] . '/delete') ?>" class="d-inline" onsubmit="return confirm('Remove this expense?')">
+              <form method="post" action="<?= base_url('/month/' . $month['id'] . '/expense/' . $row['id'] . '/delete') ?>" class="d-inline" onsubmit="return confirm('Remove this expense?')"><?= csrf_field() ?>
                 <button class="btn btn-sm btn-link text-danger p-0"><i class="bi bi-trash"></i></button>
               </form>
 
               <div class="modal fade" id="editExpense<?= $row['id'] ?>" tabindex="-1">
                 <div class="modal-dialog">
-                  <form method="post" action="<?= base_url('/month/' . $month['id'] . '/expense/' . $row['id'] . '/update') ?>" class="modal-content">
+                  <form method="post" action="<?= base_url('/month/' . $month['id'] . '/expense/' . $row['id'] . '/update') ?>" class="modal-content"><?= csrf_field() ?>
                     <div class="modal-header"><h5 class="modal-title">Edit Expense</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                     <div class="modal-body">
                       <div class="mb-2"><label class="form-label">Date</label><input class="form-control" name="expense_date" type="date" value="<?= e($row['expense_date']) ?>" required></div>
@@ -366,11 +369,20 @@ $locked = (bool) $month['is_locked'];
       </table>
       </div>
       <?php if (!$locked): ?>
-      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/expense') ?>" class="row g-2 no-print">
+      <div class="d-flex align-items-center gap-2 mb-2 no-print">
+        <label class="btn btn-sm btn-outline-primary mb-0">
+          <i class="bi bi-camera"></i> Scan Receipt
+          <input type="file" id="receiptInput" accept="image/*" capture="environment" class="d-none">
+        </label>
+        <span id="receiptStatus" class="text-muted small"></span>
+      </div>
+      <form method="post" action="<?= base_url('/month/' . $month['id'] . '/expense') ?>" class="row g-2 no-print" id="addExpenseForm"><?= csrf_field() ?>
+        <input type="hidden" name="receipt_path">
         <div class="col-md-2"><input class="form-control form-control-sm" name="expense_date" type="date" required></div>
         <div class="col-md-2"><input class="form-control form-control-sm" name="amount" type="number" step="0.001" placeholder="Amount" required></div>
         <div class="col-md-2">
           <select class="form-select form-select-sm" name="category_id" required>
+            <option value="">Category...</option>
             <?php foreach ($categories as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['name']) ?></option><?php endforeach; ?>
           </select>
         </div>
@@ -434,6 +446,54 @@ $locked = (bool) $month['is_locked'];
   document.querySelectorAll('.fc-category-select').forEach(function (select) {
     toggle(select);
     select.addEventListener('change', function () { toggle(select); });
+  });
+})();
+
+// "Scan Receipt": uploads the chosen/captured photo, asks the server to read
+// it (Core/ReceiptScanner, via the configured AI provider), and pre-fills the
+// Add Expense form below with what it found. Nothing is saved automatically —
+// the user still reviews the fields and clicks Add, same as typing them in by
+// hand, so a misread amount/category is easy to catch or correct first.
+(function () {
+  var input = document.getElementById('receiptInput');
+  if (!input) { return; }
+  var status = document.getElementById('receiptStatus');
+  var form = document.getElementById('addExpenseForm');
+  var scanUrl = '<?= base_url('/month/' . $month['id'] . '/expense/scan') ?>';
+  var csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+  input.addEventListener('change', function () {
+    var file = input.files[0];
+    if (!file) { return; }
+
+    status.textContent = 'Reading receipt…';
+    var body = new FormData();
+    body.append('receipt', file);
+    body.append('_token', csrfToken);
+
+    fetch(scanUrl, { method: 'POST', body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.receipt_path) {
+          form.querySelector('[name="receipt_path"]').value = data.receipt_path;
+        }
+        if (!data.ok) {
+          status.textContent = (data.error || 'Could not read that receipt — enter it manually below.');
+          return;
+        }
+        if (data.expense_date) { form.querySelector('[name="expense_date"]').value = data.expense_date; }
+        if (data.amount) { form.querySelector('[name="amount"]').value = data.amount; }
+        if (data.category_id) { form.querySelector('[name="category_id"]').value = data.category_id; }
+        if (data.description) { form.querySelector('[name="description"]').value = data.description; }
+        status.textContent = 'Got it — review the fields below, then click Add.';
+        form.querySelector('[name="amount"]').focus();
+      })
+      .catch(function () {
+        status.textContent = 'Something went wrong reading that receipt — enter it manually below.';
+      })
+      .finally(function () {
+        input.value = '';
+      });
   });
 })();
 </script>

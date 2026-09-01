@@ -117,6 +117,7 @@
 
 <script>
 const askUrl = '<?= base_url('/advisor/ask') ?>';
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 const log = document.getElementById('advisorLog');
 const form = document.getElementById('advisorForm');
 const input = document.getElementById('advisorInput');
@@ -281,7 +282,7 @@ function ask(value) {
 
   fetch(askUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken },
     body: 'message=' + encodeURIComponent(value) + '&conversation_id=' + encodeURIComponent(conversationId)
   })
   .then(r => r.json())

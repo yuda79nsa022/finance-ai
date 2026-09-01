@@ -1,0 +1,6 @@
+# Defense in depth: storage/ (backups, receipts, exports) must never be served
+# directly — the app always goes through public/index.php, which streams these
+# files itself after an ownership check. This only matters if a server is ever
+# misconfigured to point its document root above public/, but costs nothing to
+# have in place regardless.
+Require all denied

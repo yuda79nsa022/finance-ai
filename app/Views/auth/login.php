@@ -5,7 +5,7 @@
     <?php if ($error): ?>
       <div class="alert alert-danger py-2"><?= e($error) ?></div>
     <?php endif; ?>
-    <form method="post" action="<?= base_url('/login') ?>">
+    <form method="post" action="<?= base_url('/login') ?>"><?= csrf_field() ?>
       <input type="hidden" name="return" value="<?= e($return) ?>">
       <div class="mb-3">
         <label class="form-label">Email</label>

@@ -147,6 +147,8 @@ CREATE TABLE expenses (
   category_id       INT UNSIGNED NOT NULL,             -- Column D
   description       VARCHAR(255)  NULL,                 -- Column E
   payment_method_id INT UNSIGNED NULL,                  -- Column F
+  receipt_path      VARCHAR(255)  NULL,                 -- relative path under storage/receipts/, e.g. "3/ab12....jpg" — set when this
+                                                          -- expense was added from a scanned receipt photo (see ReceiptScanner/MonthController::scanReceipt)
   created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_exp_month    FOREIGN KEY (month_id) REFERENCES months(id) ON DELETE CASCADE,
   CONSTRAINT fk_exp_category FOREIGN KEY (category_id) REFERENCES categories(id),

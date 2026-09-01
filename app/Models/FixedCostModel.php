@@ -135,10 +135,11 @@ class FixedCostModel
         return (int) Database::connection()->lastInsertId();
     }
 
-    public static function update(int $id, array $data): void
+    /** Scoped to $monthId so one user can never edit another user's fixed-cost row by guessing/tampering an id — the caller must have already verified $monthId belongs to the requesting user. */
+    public static function update(int $id, array $data, int $monthId): void
     {
         $stmt = Database::connection()->prepare(
-            "UPDATE fixed_costs SET item=?, category_id=?, amount=?, due_day=?, payment_method_id=?, notes=? WHERE id=?"
+            "UPDATE fixed_costs SET item=?, category_id=?, amount=?, due_day=?, payment_method_id=?, notes=? WHERE id=? AND month_id=?"
         );
         $stmt->execute([
             $data['item'],
@@ -148,12 +149,14 @@ class FixedCostModel
             $data['payment_method_id'] ?? null,
             $data['notes'] ?? null,
             $id,
+            $monthId,
         ]);
     }
 
-    public static function delete(int $id): void
+    /** Scoped to $monthId — see update(). */
+    public static function delete(int $id, int $monthId): void
     {
-        $stmt = Database::connection()->prepare("DELETE FROM fixed_costs WHERE id = ?");
-        $stmt->execute([$id]);
+        $stmt = Database::connection()->prepare("DELETE FROM fixed_costs WHERE id = ? AND month_id = ?");
+        $stmt->execute([$id, $monthId]);
     }
 }

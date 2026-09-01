@@ -61,6 +61,95 @@ class AIClient
         };
     }
 
+    /**
+     * Single-turn image + text call, used by ReceiptScanner — separate from
+     * send() because a vision request is one user message containing an
+     * image block plus a text block, not a multi-turn text conversation.
+     * DeepSeek's chat-completions models don't accept image input, so it's
+     * refused here with a clear error rather than sending a request that
+     * would just fail provider-side.
+     *
+     * @param string $imageBase64 Raw base64 (no "data:...;base64," prefix).
+     * @param string $mediaType e.g. "image/jpeg".
+     * @return array{ok: bool, text?: string, error?: string}
+     */
+    public static function visionExtract(string $systemPrompt, string $userText, string $imageBase64, string $mediaType): array
+    {
+        $settings = AiSettings::get();
+        $apiKey = trim((string) $settings['api_key']);
+        $provider = $settings['provider'] ?: 'anthropic';
+        $model = trim((string) $settings['model']) !== '' ? $settings['model'] : self::DEFAULT_MODELS[$provider];
+
+        if ($apiKey === '') {
+            return ['ok' => false, 'error' => 'The AI Advisor isn\'t configured yet — an admin needs to add a provider and API key in Settings > AI Advisor.'];
+        }
+
+        return match ($provider) {
+            'anthropic' => self::sendAnthropicVision($apiKey, $model, $systemPrompt, $userText, $imageBase64, $mediaType),
+            'openai'    => self::sendOpenAiVision($apiKey, $model, $systemPrompt, $userText, $imageBase64, $mediaType),
+            'deepseek'  => ['ok' => false, 'error' => 'DeepSeek doesn\'t support reading images. Switch to Claude (Anthropic) or ChatGPT (OpenAI) in Settings > AI Advisor to use receipt scanning.'],
+            default     => ['ok' => false, 'error' => 'Unknown AI provider.'],
+        };
+    }
+
+    private static function sendAnthropicVision(string $apiKey, string $model, string $systemPrompt, string $userText, string $imageBase64, string $mediaType): array
+    {
+        $payload = [
+            'model'      => $model,
+            'max_tokens' => 1024,
+            'system'     => $systemPrompt,
+            'messages'   => [[
+                'role'    => 'user',
+                'content' => [
+                    ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $mediaType, 'data' => $imageBase64]],
+                    ['type' => 'text', 'text' => $userText],
+                ],
+            ]],
+        ];
+
+        $result = self::post(self::ANTHROPIC_ENDPOINT, $payload, [
+            'content-type: application/json',
+            'x-api-key: ' . $apiKey,
+            'anthropic-version: ' . self::ANTHROPIC_VERSION,
+        ]);
+        if (!$result['ok']) {
+            return $result;
+        }
+
+        $text = '';
+        foreach ($result['decoded']['content'] ?? [] as $block) {
+            if (($block['type'] ?? '') === 'text') {
+                $text .= $block['text'];
+            }
+        }
+        return $text !== '' ? ['ok' => true, 'text' => $text] : ['ok' => false, 'error' => 'The AI service returned an empty response.'];
+    }
+
+    private static function sendOpenAiVision(string $apiKey, string $model, string $systemPrompt, string $userText, string $imageBase64, string $mediaType): array
+    {
+        $payload = [
+            'model'    => $model,
+            'messages' => [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user', 'content' => [
+                    ['type' => 'text', 'text' => $userText],
+                    ['type' => 'image_url', 'image_url' => ['url' => 'data:' . $mediaType . ';base64,' . $imageBase64]],
+                ]],
+            ],
+        ];
+
+        $result = self::post(self::OPENAI_ENDPOINT, $payload, [
+            'content-type: application/json',
+            'authorization: Bearer ' . $apiKey,
+        ]);
+        if (!$result['ok']) {
+            return $result;
+        }
+
+        $text = $result['decoded']['choices'][0]['message']['content'] ?? '';
+        return $text !== '' ? ['ok' => true, 'text' => $text] : ['ok' => false, 'error' => 'The AI service returned an empty response.'];
+    }
+
     private static function sendAnthropic(string $apiKey, string $model, string $systemPrompt, array $messages): array
     {
         $payload = [

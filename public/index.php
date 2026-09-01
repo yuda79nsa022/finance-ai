@@ -15,6 +15,11 @@ use App\Controllers\AdvisorController;
 $appConfig = require dirname(__DIR__) . '/config/app.php';
 date_default_timezone_set($appConfig['timezone']);
 
+// Started once, globally, before routing: every page (including the login
+// form) needs a session available to read/generate its CSRF token, and
+// Router::dispatch() needs $_SESSION available to verify one on every POST.
+\App\Core\Auth::start();
+
 $router = new Router();
 
 // Auth
@@ -38,6 +43,8 @@ $router->post('/month/{id}/fixed-cost/{entryId}/delete', [MonthController::class
 $router->post('/month/{id}/expense', [MonthController::class, 'addExpense']);
 $router->post('/month/{id}/expense/{entryId}/update', [MonthController::class, 'updateExpense']);
 $router->post('/month/{id}/expense/{entryId}/delete', [MonthController::class, 'deleteExpense']);
+$router->post('/month/{id}/expense/scan', [MonthController::class, 'scanReceipt']);
+$router->get('/month/{id}/expense/{entryId}/receipt', [MonthController::class, 'receiptImage']);
 $router->post('/month/{id}/loan', [MonthController::class, 'addLoan']);
 $router->post('/month/{id}/loan/{lenderId}/update', [MonthController::class, 'updateLoan']);
 $router->post('/month/{id}/loan/{lenderId}/delete', [MonthController::class, 'deleteLoan']);

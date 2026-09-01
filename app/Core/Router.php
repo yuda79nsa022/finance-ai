@@ -42,6 +42,11 @@ class Router
                 continue;
             }
             if (preg_match($route['pattern'], $uri, $matches)) {
+                if ($method === 'POST' && !$this->csrfValid()) {
+                    http_response_code(419);
+                    echo 'Your session has expired or this page was open too long. Please go back, refresh, and try again.';
+                    return;
+                }
                 array_shift($matches);
                 [$class, $action] = $route['handler'];
                 $controller = new $class();
@@ -52,5 +57,20 @@ class Router
 
         http_response_code(404);
         echo '404 — Page not found: ' . htmlspecialchars($uri);
+    }
+
+    /**
+     * Every POST route is state-changing, so every POST route is checked —
+     * there is no exempt list. Accepts the token either as a form field
+     * (_token, from csrf_field()) or an X-CSRF-Token header (for the JSON
+     * fetch() calls in the wizard/advisor/receipt-scan UIs). Requires
+     * Auth::start() to have already run (see public/index.php) so
+     * $_SESSION is available here regardless of which route matched.
+     */
+    private function csrfValid(): bool
+    {
+        $token = $_POST['_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+        $sessionToken = $_SESSION['_csrf'] ?? '';
+        return $sessionToken !== '' && is_string($token) && $token !== '' && hash_equals($sessionToken, (string) $token);
     }
 }

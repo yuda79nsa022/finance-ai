@@ -51,11 +51,19 @@ class ExpenseModel
         return $out;
     }
 
+    /** Scoped to $monthId so one user can never load another user's expense row by guessing/tampering an id — the caller must have already verified $monthId belongs to the requesting user. Used to serve a receipt image only to its owner. */
+    public static function find(int $id, int $monthId): ?array
+    {
+        $stmt = Database::connection()->prepare("SELECT * FROM expenses WHERE id = ? AND month_id = ?");
+        $stmt->execute([$id, $monthId]);
+        return $stmt->fetch() ?: null;
+    }
+
     public static function add(int $monthId, array $data): int
     {
         $stmt = Database::connection()->prepare(
-            "INSERT INTO expenses (month_id, expense_date, amount, category_id, description, payment_method_id)
-             VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO expenses (month_id, expense_date, amount, category_id, description, payment_method_id, receipt_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
         );
         $stmt->execute([
             $monthId,
@@ -64,14 +72,16 @@ class ExpenseModel
             $data['category_id'],
             $data['description'] ?? null,
             $data['payment_method_id'] ?? null,
+            $data['receipt_path'] ?? null,
         ]);
         return (int) Database::connection()->lastInsertId();
     }
 
-    public static function update(int $id, array $data): void
+    /** Scoped to $monthId — see find(). Does not touch receipt_path (only set at add() time via the scan flow). */
+    public static function update(int $id, array $data, int $monthId): void
     {
         $stmt = Database::connection()->prepare(
-            "UPDATE expenses SET expense_date=?, amount=?, category_id=?, description=?, payment_method_id=? WHERE id=?"
+            "UPDATE expenses SET expense_date=?, amount=?, category_id=?, description=?, payment_method_id=? WHERE id=? AND month_id=?"
         );
         $stmt->execute([
             $data['expense_date'],
@@ -80,12 +90,14 @@ class ExpenseModel
             $data['description'] ?? null,
             $data['payment_method_id'] ?? null,
             $id,
+            $monthId,
         ]);
     }
 
-    public static function delete(int $id): void
+    /** Scoped to $monthId — see find(). */
+    public static function delete(int $id, int $monthId): void
     {
-        $stmt = Database::connection()->prepare("DELETE FROM expenses WHERE id = ?");
-        $stmt->execute([$id]);
+        $stmt = Database::connection()->prepare("DELETE FROM expenses WHERE id = ? AND month_id = ?");
+        $stmt->execute([$id, $monthId]);
     }
 }

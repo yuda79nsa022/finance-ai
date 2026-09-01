@@ -4,7 +4,7 @@
     <h4 class="mb-3">My Account</h4>
     <?php if ($error): ?><div class="alert alert-danger py-2"><?= e($error) ?></div><?php endif; ?>
     <?php if ($success): ?><div class="alert alert-success py-2">Password updated.</div><?php endif; ?>
-    <form method="post" action="<?= base_url('/account/password') ?>">
+    <form method="post" action="<?= base_url('/account/password') ?>"><?= csrf_field() ?>
       <div class="mb-3">
         <label class="form-label">Current Password</label>
         <input type="password" class="form-control" name="current_password" required>
