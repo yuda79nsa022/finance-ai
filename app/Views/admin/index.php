@@ -1,6 +1,13 @@
 <?php /** @var array $categories */ /** @var array $paymentMethods */ /** @var array $lenders */ /** @var array $financialYears */ ?>
 <h3 class="mb-3">Settings / Administration</h3>
 
+<?php if (!empty($error)): ?>
+  <div class="alert alert-danger alert-dismissible fade show" role="alert">
+    <?= e($error) ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+<?php endif; ?>
+
 <ul class="nav nav-tabs" id="adminTabs">
   <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#categories">Categories</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#payment-methods">Payment Methods</a></li>
@@ -173,12 +180,6 @@
 
   <div class="tab-pane fade" id="users">
     <div class="card p-3">
-      <?php if (!empty($error)): ?>
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-          <?= e($error) ?>
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-      <?php endif; ?>
       <table class="table table-sm">
         <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th></th></tr></thead>
         <tbody>

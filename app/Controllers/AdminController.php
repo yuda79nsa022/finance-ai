@@ -66,18 +66,59 @@ class AdminController extends Controller
     // ---- Users ------------------------------------------------------------
     public function addUser(): void
     {
-        \App\Models\User::create(
-            $this->input('name'),
-            $this->input('email'),
-            $this->input('password'),
-            $this->input('role', 'user')
-        );
+        $name = trim((string) $this->input('name', ''));
+        $email = trim((string) $this->input('email', ''));
+        $password = (string) $this->input('password', '');
+        $role = $this->input('role', 'user') === 'admin' ? 'admin' : 'user';
+
+        if ($name === '' || $email === '') {
+            $this->redirect('/admin?error=' . urlencode('Name and email are required.') . '#users');
+            return;
+        }
+        // Deliberately more permissive than FILTER_VALIDATE_EMAIL: this app's own
+        // installer seeds "admin@localhost" (no TLD), a normal pattern for a
+        // self-hosted install without real email/DNS — FILTER_VALIDATE_EMAIL
+        // rejects that, so it would block re-creating exactly that kind of
+        // account. Still catches the actually malformed cases (no @, blank
+        // local/domain part, embedded whitespace).
+        if (!preg_match('/^\S+@\S+$/', $email)) {
+            $this->redirect('/admin?error=' . urlencode('That doesn\'t look like a valid email address.') . '#users');
+            return;
+        }
+        if (strlen($password) < 8) {
+            $this->redirect('/admin?error=' . urlencode('Password must be at least 8 characters.') . '#users');
+            return;
+        }
+
+        try {
+            \App\Models\User::create($name, $email, $password, $role);
+        } catch (\PDOException $e) {
+            if ((int) $e->getCode() === 23000) {
+                $this->redirect('/admin?error=' . urlencode('A user with that email already exists.') . '#users');
+                return;
+            }
+            throw $e;
+        }
+
         $this->redirect('/admin#users');
     }
 
     public function deactivateUser(string $id): void
     {
-        \App\Models\User::setActive((int) $id, false);
+        $targetId = (int) $id;
+
+        if ($targetId === $this->currentUserId()) {
+            $this->redirect('/admin?error=' . urlencode('You can\'t deactivate your own account while logged in as it.') . '#users');
+            return;
+        }
+
+        $target = \App\Models\User::find($targetId);
+        if ($target && $target['role'] === 'admin' && (bool) $target['is_active'] && \App\Models\User::countActiveAdmins() <= 1) {
+            $this->redirect('/admin?error=' . urlencode('Can\'t deactivate the last remaining active administrator — promote another user to admin first.') . '#users');
+            return;
+        }
+
+        \App\Models\User::setActive($targetId, false);
         $this->redirect('/admin#users');
     }
 
@@ -141,7 +182,15 @@ class AdminController extends Controller
 
     public function deletePaymentMethod(string $id): void
     {
-        PaymentMethod::delete((int) $id);
+        try {
+            PaymentMethod::delete((int) $id);
+        } catch (\PDOException $e) {
+            if ((int) $e->getCode() === 23000) {
+                $this->redirect('/admin?error=' . urlencode('That payment method is still used by existing fixed costs or expenses — remove or reassign those first.') . '#payment-methods');
+                return;
+            }
+            throw $e;
+        }
         $this->redirect('/admin#payment-methods');
     }
 

@@ -20,6 +20,27 @@ date_default_timezone_set($appConfig['timezone']);
 // Router::dispatch() needs $_SESSION available to verify one on every POST.
 \App\Core\Auth::start();
 
+// Security response headers, set on every response (including 404s/errors)
+// since this happens before routing. script-src/style-src need 'unsafe-inline'
+// because the app's views use plain inline <script> blocks and inline
+// style="" attributes (no build step / nonce plumbing exists) — everything
+// else is locked down to same-origin plus the one CDN host the layout
+// actually loads from (cdnjs.cloudflare.com, for Bootstrap/Chart.js/icons).
+header("Content-Security-Policy: default-src 'self'; "
+    . "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+    . "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+    . "font-src 'self' https://cdnjs.cloudflare.com; "
+    . "img-src 'self' data:; "
+    . "connect-src 'self'; "
+    . "object-src 'none'; "
+    . "base-uri 'self'; "
+    . "form-action 'self'; "
+    . "frame-ancestors 'none';");
+header('X-Frame-Options: DENY');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header('Permissions-Policy: geolocation=(), microphone=(), payment=(), usb=()');
+
 $router = new Router();
 
 // Auth

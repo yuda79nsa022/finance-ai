@@ -67,6 +67,14 @@ class User
         $stmt->execute([$active ? 1 : 0, $id]);
     }
 
+    /** Used to block deactivating the last remaining active admin — see AdminController::deactivateUser(). */
+    public static function countActiveAdmins(): int
+    {
+        return (int) Database::connection()
+            ->query("SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1")
+            ->fetchColumn();
+    }
+
     public static function setRole(int $id, string $role): void
     {
         $stmt = Database::connection()->prepare("UPDATE users SET role = ? WHERE id = ?");
