@@ -149,11 +149,24 @@
 
   <div class="tab-pane fade" id="financial-years">
     <div class="card p-3">
+      <p class="text-muted small">The active year is what the Dashboard, "New Entry" wizard, and reports default to — switch it here to work in or view a different year.</p>
       <table class="table table-sm">
-        <thead><tr><th>Label</th><th>Start</th><th>End</th><th>Active</th></tr></thead>
+        <thead><tr><th>Label</th><th>Start</th><th>End</th><th>Active</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($financialYears as $y): ?>
-          <tr><td><?= e($y['label']) ?></td><td><?= e($y['start_month']) ?></td><td><?= e($y['end_month']) ?></td><td><?= $y['is_active'] ? 'Yes' : 'No' ?></td></tr>
+          <tr>
+            <td><?= e($y['label']) ?></td>
+            <td><?= e($y['start_month']) ?></td>
+            <td><?= e($y['end_month']) ?></td>
+            <td><?= $y['is_active'] ? '<span class="badge text-bg-success">Active</span>' : '' ?></td>
+            <td>
+              <?php if (!$y['is_active']): ?>
+              <form method="post" action="<?= base_url('/admin/financial-year/' . $y['id'] . '/activate') ?>" class="d-inline"><?= csrf_field() ?>
+                <button class="btn btn-sm btn-outline-primary">Switch to this year</button>
+              </form>
+              <?php endif; ?>
+            </td>
+          </tr>
         <?php endforeach; ?>
         </tbody>
       </table>

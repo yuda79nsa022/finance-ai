@@ -329,6 +329,13 @@ class AdminController extends Controller
         $this->redirect('/admin#financial-years');
     }
 
+    /** Switches which financial year is "current" — the one the Dashboard, wizard, and reports default to. FinancialYear::activate() scopes the lookup to this admin's own years, so a tampered id just fails silently rather than switching someone else's tracker. */
+    public function activateFinancialYear(string $id): void
+    {
+        FinancialYear::activate((int) $id, $this->currentUserId());
+        $this->redirect('/admin#financial-years');
+    }
+
     // ---- Backup / restore --------------------------------------------------
     public function backup(): void
     {

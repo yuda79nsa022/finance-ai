@@ -89,6 +89,7 @@ $router->post('/admin/lender', [AdminController::class, 'addLender']);
 $router->post('/admin/lender/{id}/deactivate', [AdminController::class, 'deactivateLender']);
 $router->post('/admin/lender/{id}/activate', [AdminController::class, 'activateLender']);
 $router->post('/admin/financial-year', [AdminController::class, 'createFinancialYear']);
+$router->post('/admin/financial-year/{id}/activate', [AdminController::class, 'activateFinancialYear']);
 $router->get('/admin/backup', [AdminController::class, 'backup']);
 $router->post('/admin/restore', [AdminController::class, 'restore']);
 $router->post('/admin/user', [AdminController::class, 'addUser']);
