@@ -27,6 +27,11 @@ class AuthController extends Controller
         $password = (string) $this->input('password', '');
         $return = $this->input('return', '/');
 
+        if ($email !== '' && Auth::isLockedOut($email)) {
+            $this->redirect('/login?error=' . urlencode('Too many failed attempts for this account. Try again in about 15 minutes.') . '&return=' . urlencode($return));
+            return;
+        }
+
         if (Auth::attempt($email, $password)) {
             $this->redirect($return && str_starts_with($return, '/') ? $return : '/');
             return;

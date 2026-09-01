@@ -245,6 +245,22 @@ CREATE TABLE ai_settings (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
+-- login_attempts : failed-login throttle (Core/Auth::attempt()).
+-- One row per failed attempt, keyed by the normalized email that was
+-- typed in — not tied to a user id, since the account may not even
+-- exist (a typo'd or guessed email still gets throttled). Auth counts
+-- rows within the last N minutes to decide whether to lock that email
+-- out; Auth::attempt() prunes rows older than a day on every failure so
+-- this never grows unbounded on a personal-scale install.
+-- ---------------------------------------------------------------------
+CREATE TABLE login_attempts (
+  id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  email        VARCHAR(150) NOT NULL,
+  attempted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_login_attempts_email_time (email, attempted_at)
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
 -- Seed data: categories. The first 14 preserve the exact order from the
 -- original workbook's H5:H18. Everything from 'Bank Loan' (15) onward is
 -- an addition so the Loan Tracker isn't limited to just Personal/Bank
