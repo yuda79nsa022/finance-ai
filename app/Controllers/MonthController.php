@@ -52,6 +52,7 @@ class MonthController extends Controller
         // Loan modal.
         $fixedCosts = FixedCostModel::forMonth($month['id']);
         foreach ($fixedCosts as &$fcRow) {
+            $fcRow['lender_initial_balance'] = null; // always present so the view never hits an undefined array key on a non-loan row
             if (($fcRow['category_type'] ?? null) === 'loan') {
                 $lender = Lender::findByNameAny($fcRow['item'], $this->currentUserId());
                 $fcRow['lender_initial_balance'] = $lender ? (float) $lender['initial_balance'] : null;

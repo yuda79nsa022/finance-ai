@@ -31,7 +31,13 @@ header("Content-Security-Policy: default-src 'self'; "
     . "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
     . "font-src 'self' https://cdnjs.cloudflare.com; "
     . "img-src 'self' data:; "
-    . "connect-src 'self'; "
+    // Some Chromium-based browsers (observed in Brave) classify a plain
+    // <script src>/<link> load from a cross-origin host under connect-src
+    // rather than script-src/style-src in certain cases, blocking the
+    // Bootstrap CDN load entirely — script-src/style-src above already
+    // scope this same host down to exactly what's needed, so allowing it
+    // here too doesn't grant anything beyond that.
+    . "connect-src 'self' https://cdnjs.cloudflare.com; "
     . "object-src 'none'; "
     . "base-uri 'self'; "
     . "form-action 'self'; "
