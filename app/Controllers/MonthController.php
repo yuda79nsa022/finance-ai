@@ -407,6 +407,95 @@ class MonthController extends Controller
         $this->json($result);
     }
 
+    /**
+     * Parses an uploaded bank statement export (CSV/XLS/XLSX) into candidate
+     * Variable Expense rows and returns them for review — like scanReceipt(),
+     * nothing is saved here. The browser shows the parsed rows in an
+     * editable table (with likely duplicates pre-flagged) and the user
+     * confirms which ones to actually import via confirmImportStatement().
+     */
+    public function importStatement(string $monthId): void
+    {
+        $month = $this->requireMonth((int) $monthId);
+        $this->denyIfLocked($month);
+
+        if (!file_exists(dirname(__DIR__, 2) . '/vendor/autoload.php')) {
+            $this->json(['ok' => false, 'error' => 'Statement import needs one extra library — run "composer install" in the project root first (see docs/INSTALL.md).']);
+            return;
+        }
+
+        $uploadError = $_FILES['statement']['error'] ?? UPLOAD_ERR_NO_FILE;
+        if ($uploadError === UPLOAD_ERR_INI_SIZE || $uploadError === UPLOAD_ERR_FORM_SIZE) {
+            $this->json(['ok' => false, 'error' => 'That file is larger than this server currently accepts (server limit: ' . ini_get('upload_max_filesize') . '). Try exporting a shorter date range.']);
+            return;
+        }
+        if (empty($_FILES['statement']['tmp_name']) || $uploadError !== UPLOAD_ERR_OK) {
+            $this->json(['ok' => false, 'error' => 'No file was received — choose a CSV or Excel file and try again.']);
+            return;
+        }
+
+        $ext = strtolower(pathinfo((string) ($_FILES['statement']['name'] ?? ''), PATHINFO_EXTENSION));
+        if (!in_array($ext, ['csv', 'xlsx', 'xls'], true)) {
+            $this->json(['ok' => false, 'error' => 'Please upload a .csv, .xlsx, or .xls file exported from your bank\'s online banking.']);
+            return;
+        }
+
+        $result = \App\Core\StatementImporter::parse($_FILES['statement']['tmp_name'], $month['id'], $ext);
+        $this->json($result);
+    }
+
+    /**
+     * Saves the rows the user kept checked in the statement-import review
+     * table. Every row goes through the same validation as a single manual
+     * add (validAmount/validDate/categoryValid) — the parser's own output
+     * is trusted no further than anything else reaching this endpoint,
+     * since the browser could have altered it before submitting. All rows
+     * are validated before any are saved, so a single bad row rejects the
+     * whole batch rather than importing part of it silently.
+     */
+    public function confirmImportStatement(string $monthId): void
+    {
+        $month = $this->requireMonth((int) $monthId);
+        $this->denyIfLocked($month);
+
+        $body = json_decode((string) file_get_contents('php://input'), true);
+        $submittedRows = is_array($body['rows'] ?? null) ? $body['rows'] : [];
+
+        if (!$submittedRows) {
+            $this->json(['ok' => false, 'error' => 'No rows were selected to import.']);
+            return;
+        }
+        if (count($submittedRows) > 500) {
+            $this->json(['ok' => false, 'error' => 'That\'s too many rows for one import (max 500) — export a shorter date range and try again.']);
+            return;
+        }
+
+        $validated = [];
+        foreach ($submittedRows as $i => $row) {
+            $row = is_array($row) ? $row : [];
+            $date = $this->validDate($row['expense_date'] ?? null);
+            $amount = $this->validAmount($row['amount'] ?? null);
+            $categoryId = (int) ($row['category_id'] ?? 0);
+            if ($date === null || $amount === null || !$this->categoryValid($categoryId)) {
+                $this->json(['ok' => false, 'error' => 'Row ' . ($i + 1) . ' has an invalid date, amount, or category — fix it in the table and try again.']);
+                return;
+            }
+            $validated[] = [
+                'expense_date'      => $date,
+                'amount'            => $amount,
+                'category_id'       => $categoryId,
+                'description'       => isset($row['description']) && trim((string) $row['description']) !== '' ? trim((string) $row['description']) : null,
+                'payment_method_id' => null,
+            ];
+        }
+
+        foreach ($validated as $row) {
+            ExpenseModel::add($month['id'], $row);
+        }
+
+        $this->json(['ok' => true, 'imported' => count($validated)]);
+    }
+
     /** Streams a receipt image back only to the user who owns the expense it's attached to — never served directly, always through this ownership check. */
     public function receiptImage(string $monthId, string $expenseId): void
     {

@@ -66,6 +66,8 @@ $router->post('/month/{id}/expense/{entryId}/update', [MonthController::class, '
 $router->post('/month/{id}/expense/{entryId}/delete', [MonthController::class, 'deleteExpense']);
 $router->post('/month/{id}/expense/scan', [MonthController::class, 'scanReceipt']);
 $router->get('/month/{id}/expense/{entryId}/receipt', [MonthController::class, 'receiptImage']);
+$router->post('/month/{id}/expense/import', [MonthController::class, 'importStatement']);
+$router->post('/month/{id}/expense/import/confirm', [MonthController::class, 'confirmImportStatement']);
 $router->post('/month/{id}/loan', [MonthController::class, 'addLoan']);
 $router->post('/month/{id}/loan/{lenderId}/update', [MonthController::class, 'updateLoan']);
 $router->post('/month/{id}/loan/{lenderId}/delete', [MonthController::class, 'deleteLoan']);

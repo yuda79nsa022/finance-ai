@@ -59,6 +59,24 @@ class ExpenseModel
         return $stmt->fetch() ?: null;
     }
 
+    /**
+     * Same date + same amount, already logged this month — used by
+     * StatementImporter to flag a likely-duplicate row (e.g. one already
+     * entered manually, then it also shows up in an imported statement)
+     * for the user to review rather than silently re-importing it. A
+     * heuristic, not a guarantee: two unrelated purchases on the same day
+     * for the same amount would also match — that's exactly why it's
+     * surfaced for review instead of auto-skipped.
+     */
+    public static function findDuplicate(int $monthId, string $expenseDate, float $amount): ?array
+    {
+        $stmt = Database::connection()->prepare(
+            "SELECT * FROM expenses WHERE month_id = ? AND expense_date = ? AND amount = ? LIMIT 1"
+        );
+        $stmt->execute([$monthId, $expenseDate, $amount]);
+        return $stmt->fetch() ?: null;
+    }
+
     public static function add(int $monthId, array $data): int
     {
         $stmt = Database::connection()->prepare(

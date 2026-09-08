@@ -376,6 +376,13 @@ $locked = (bool) $month['is_locked'];
         </label>
         <span id="receiptStatus" class="text-muted small"></span>
       </div>
+      <div class="d-flex align-items-center gap-2 mb-2 no-print">
+        <label class="btn btn-sm btn-outline-secondary mb-0">
+          <i class="bi bi-file-earmark-spreadsheet"></i> Import Bank Statement
+          <input type="file" id="statementInput" accept=".csv,.xlsx,.xls" class="d-none">
+        </label>
+        <span id="statementStatus" class="text-muted small"></span>
+      </div>
       <form method="post" action="<?= base_url('/month/' . $month['id'] . '/expense') ?>" class="row g-2 no-print" id="addExpenseForm"><?= csrf_field() ?>
         <input type="hidden" name="receipt_path">
         <div class="col-md-2"><input class="form-control form-control-sm" name="expense_date" type="date" required></div>
@@ -396,6 +403,30 @@ $locked = (bool) $month['is_locked'];
         <div class="col-md-1"><button class="btn btn-sm btn-outline-primary w-100">Add</button></div>
       </form>
       <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- Statement import review — populated by JS after a file is parsed; nothing is saved until "Import Selected" is clicked. -->
+  <div class="modal fade no-print" id="statementImportModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Review Imported Transactions</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-2">Uncheck anything that shouldn't be added — rows flagged <span class="badge text-bg-warning">possible duplicate</span> already match an existing entry this month and start unchecked. Categories are a best guess; change any that look wrong.</p>
+          <table class="table table-sm align-middle">
+            <thead><tr><th></th><th>Date</th><th class="text-end">Amount</th><th>Description</th><th>Category</th></tr></thead>
+            <tbody id="statementImportRows"></tbody>
+          </table>
+        </div>
+        <div class="modal-footer">
+          <span id="statementImportResult" class="text-muted small me-auto"></span>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="statementImportConfirm">Import Selected</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -493,6 +524,153 @@ $locked = (bool) $month['is_locked'];
       })
       .finally(function () {
         input.value = '';
+      });
+  });
+})();
+
+// "Import Bank Statement": uploads a CSV/Excel export (Core/StatementImporter),
+// shows every parsed row in an editable review table — nothing is saved until
+// "Import Selected" is clicked. Rows flagged as a likely duplicate (same date
+// + amount as something already logged this month) start unchecked so a
+// re-imported statement doesn't silently double-count spending.
+(function () {
+  var input = document.getElementById('statementInput');
+  if (!input) { return; }
+  var status = document.getElementById('statementStatus');
+  var importUrl = '<?= base_url('/month/' . $month['id'] . '/expense/import') ?>';
+  var confirmUrl = '<?= base_url('/month/' . $month['id'] . '/expense/import/confirm') ?>';
+  var csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+  var categories = <?= json_encode(array_map(fn($c) => ['id' => (int) $c['id'], 'name' => $c['name']], $categories)) ?>;
+  var modalEl = document.getElementById('statementImportModal');
+  var modal = new bootstrap.Modal(modalEl);
+  var rowsBody = document.getElementById('statementImportRows');
+  var resultEl = document.getElementById('statementImportResult');
+  var confirmBtn = document.getElementById('statementImportConfirm');
+
+  function categorySelect(row) {
+    var select = document.createElement('select');
+    select.className = 'form-select form-select-sm';
+    categories.forEach(function (c) {
+      var opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name;
+      if (row.category_id && c.id === row.category_id) { opt.selected = true; }
+      select.appendChild(opt);
+    });
+    return select;
+  }
+
+  function renderRows(rows) {
+    rowsBody.innerHTML = '';
+    rows.forEach(function (row) {
+      var tr = document.createElement('tr');
+
+      var checkTd = document.createElement('td');
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'form-check-input';
+      checkbox.checked = !row.is_duplicate;
+      checkTd.appendChild(checkbox);
+      tr.appendChild(checkTd);
+
+      var dateTd = document.createElement('td');
+      dateTd.textContent = row.expense_date;
+      dateTd.className = 'text-nowrap';
+      tr.appendChild(dateTd);
+
+      var amountTd = document.createElement('td');
+      amountTd.textContent = row.amount.toFixed(3);
+      amountTd.className = 'text-end text-nowrap';
+      tr.appendChild(amountTd);
+
+      var descTd = document.createElement('td');
+      descTd.textContent = row.description || '';
+      if (row.is_duplicate) {
+        var badge = document.createElement('span');
+        badge.className = 'badge text-bg-warning ms-1';
+        badge.textContent = 'possible duplicate';
+        badge.title = row.duplicate_of ? ('Matches: ' + (row.duplicate_of.description || '(no description)') + ' — ' + row.duplicate_of.amount.toFixed(3)) : '';
+        descTd.appendChild(document.createElement('br'));
+        descTd.appendChild(badge);
+      }
+      tr.appendChild(descTd);
+
+      var catTd = document.createElement('td');
+      var select = categorySelect(row);
+      catTd.appendChild(select);
+      tr.appendChild(catTd);
+
+      tr._rowData = { checkbox: checkbox, dateText: row.expense_date, amount: row.amount, descriptionText: row.description, categorySelect: select };
+      rowsBody.appendChild(tr);
+    });
+  }
+
+  input.addEventListener('change', function () {
+    var file = input.files[0];
+    if (!file) { return; }
+
+    status.textContent = 'Reading statement…';
+    var body = new FormData();
+    body.append('statement', file);
+    body.append('_token', csrfToken);
+
+    fetch(importUrl, { method: 'POST', body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        status.textContent = '';
+        if (!data.ok) {
+          status.textContent = data.error || 'Could not read that file.';
+          return;
+        }
+        resultEl.textContent = data.rows.length + ' transaction' + (data.rows.length === 1 ? '' : 's') + ' found.';
+        renderRows(data.rows);
+        modal.show();
+      })
+      .catch(function () {
+        status.textContent = 'Something went wrong reading that file.';
+      })
+      .finally(function () {
+        input.value = '';
+      });
+  });
+
+  confirmBtn.addEventListener('click', function () {
+    var selected = [];
+    rowsBody.querySelectorAll('tr').forEach(function (tr) {
+      var d = tr._rowData;
+      if (d.checkbox.checked) {
+        selected.push({
+          expense_date: d.dateText,
+          amount: d.amount,
+          category_id: parseInt(d.categorySelect.value, 10),
+          description: d.descriptionText,
+        });
+      }
+    });
+    if (selected.length === 0) {
+      resultEl.textContent = 'Nothing selected.';
+      return;
+    }
+
+    confirmBtn.disabled = true;
+    resultEl.textContent = 'Importing…';
+    fetch(confirmUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ rows: selected }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) {
+          resultEl.textContent = data.error || 'Import failed.';
+          confirmBtn.disabled = false;
+          return;
+        }
+        window.location.reload();
+      })
+      .catch(function () {
+        resultEl.textContent = 'Something went wrong — try again.';
+        confirmBtn.disabled = false;
       });
   });
 })();
