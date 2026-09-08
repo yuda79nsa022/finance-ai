@@ -542,7 +542,8 @@ $locked = (bool) $month['is_locked'];
   var csrfToken = document.querySelector('meta[name="csrf-token"]').content;
   var categories = <?= json_encode(array_map(fn($c) => ['id' => (int) $c['id'], 'name' => $c['name']], $categories)) ?>;
   var modalEl = document.getElementById('statementImportModal');
-  var modal = new bootstrap.Modal(modalEl);
+  var modal = null; // created lazily on first successful parse (see below) — never at load time, so a
+                     // Bootstrap load failure can't silently stop the file-input listener from ever being attached
   var rowsBody = document.getElementById('statementImportRows');
   var resultEl = document.getElementById('statementImportResult');
   var confirmBtn = document.getElementById('statementImportConfirm');
@@ -624,6 +625,11 @@ $locked = (bool) $month['is_locked'];
         }
         resultEl.textContent = data.rows.length + ' transaction' + (data.rows.length === 1 ? '' : 's') + ' found.';
         renderRows(data.rows);
+        if (typeof bootstrap === 'undefined') {
+          status.textContent = 'Read ' + data.rows.length + ' transaction(s), but the popup library failed to load — try refreshing the page.';
+          return;
+        }
+        if (!modal) { modal = new bootstrap.Modal(modalEl); }
         modal.show();
       })
       .catch(function () {
