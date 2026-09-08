@@ -436,8 +436,8 @@ class MonthController extends Controller
         }
 
         $ext = strtolower(pathinfo((string) ($_FILES['statement']['name'] ?? ''), PATHINFO_EXTENSION));
-        if (!in_array($ext, ['csv', 'xlsx', 'xls'], true)) {
-            $this->json(['ok' => false, 'error' => 'Please upload a .csv, .xlsx, or .xls file exported from your bank\'s online banking.']);
+        if (!in_array($ext, ['csv', 'xlsx', 'xls', 'pdf'], true)) {
+            $this->json(['ok' => false, 'error' => 'Please upload a .csv, .xlsx, .xls, or .pdf statement from your bank\'s online banking.']);
             return;
         }
 

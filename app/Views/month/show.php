@@ -379,7 +379,7 @@ $locked = (bool) $month['is_locked'];
       <div class="d-flex align-items-center gap-2 mb-2 no-print">
         <label class="btn btn-sm btn-outline-secondary mb-0">
           <i class="bi bi-file-earmark-spreadsheet"></i> Import Bank Statement
-          <input type="file" id="statementInput" accept=".csv,.xlsx,.xls" class="d-none">
+          <input type="file" id="statementInput" accept=".csv,.xlsx,.xls,.pdf" class="d-none">
         </label>
         <span id="statementStatus" class="text-muted small"></span>
       </div>
@@ -528,8 +528,9 @@ $locked = (bool) $month['is_locked'];
   });
 })();
 
-// "Import Bank Statement": uploads a CSV/Excel export (Core/StatementImporter),
-// shows every parsed row in an editable review table — nothing is saved until
+// "Import Bank Statement": uploads a CSV/Excel export or a PDF statement
+// (Core/StatementImporter), shows every parsed row in an editable review
+// table — nothing is saved until
 // "Import Selected" is clicked. Rows flagged as a likely duplicate (same date
 // + amount as something already logged this month) start unchecked so a
 // re-imported statement doesn't silently double-count spending.
