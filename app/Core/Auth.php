@@ -116,7 +116,17 @@ class Auth
         self::start();
         if (!self::check()) {
             $base = (require dirname(__DIR__, 2) . '/config/app.php')['base_path'];
-            $return = urlencode($_SERVER['REQUEST_URI'] ?? '/');
+            // REQUEST_URI already includes base_path whenever the app is
+            // deployed under a subdirectory (the normal case — see
+            // config/app.php's base_path) — strip it here the same way
+            // Router::dispatch() does before matching routes, or redirect()
+            // below prepends base_path a second time on login, producing
+            // ".../finance-ai/public/finance-ai/public/..." and a 404.
+            $requestPath = $_SERVER['REQUEST_URI'] ?? '/';
+            if ($base !== '' && str_starts_with($requestPath, $base)) {
+                $requestPath = substr($requestPath, strlen($base));
+            }
+            $return = urlencode('/' . ltrim($requestPath, '/'));
             header('Location: ' . $base . '/login?return=' . $return);
             exit;
         }
