@@ -29,7 +29,7 @@ class User
      * with unnoticed whitespace/case will never match at login even though
      * the password is correct.
      */
-    private static function normalizeEmail(string $email): string
+    public static function normalizeEmail(string $email): string
     {
         return mb_strtolower(trim($email));
     }
@@ -65,6 +65,14 @@ class User
     {
         $stmt = Database::connection()->prepare("UPDATE users SET is_active = ? WHERE id = ?");
         $stmt->execute([$active ? 1 : 0, $id]);
+    }
+
+    /** Used to block deactivating the last remaining active admin — see AdminController::deactivateUser(). */
+    public static function countActiveAdmins(): int
+    {
+        return (int) Database::connection()
+            ->query("SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1")
+            ->fetchColumn();
     }
 
     public static function setRole(int $id, string $role): void

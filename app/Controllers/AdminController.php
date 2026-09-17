@@ -35,6 +35,7 @@ class AdminController extends Controller
             'aiSettings'     => AiSettings::get(),
             'aiProviders'    => AIClient::PROVIDER_LABELS,
             'error'          => $this->input('error'),
+            'restored'       => $this->input('restored') === '1',
         ]);
     }
 
@@ -66,18 +67,59 @@ class AdminController extends Controller
     // ---- Users ------------------------------------------------------------
     public function addUser(): void
     {
-        \App\Models\User::create(
-            $this->input('name'),
-            $this->input('email'),
-            $this->input('password'),
-            $this->input('role', 'user')
-        );
+        $name = trim((string) $this->input('name', ''));
+        $email = trim((string) $this->input('email', ''));
+        $password = (string) $this->input('password', '');
+        $role = $this->input('role', 'user') === 'admin' ? 'admin' : 'user';
+
+        if ($name === '' || $email === '') {
+            $this->redirect('/admin?error=' . urlencode('Name and email are required.') . '#users');
+            return;
+        }
+        // Deliberately more permissive than FILTER_VALIDATE_EMAIL: this app's own
+        // installer seeds "admin@localhost" (no TLD), a normal pattern for a
+        // self-hosted install without real email/DNS — FILTER_VALIDATE_EMAIL
+        // rejects that, so it would block re-creating exactly that kind of
+        // account. Still catches the actually malformed cases (no @, blank
+        // local/domain part, embedded whitespace).
+        if (!preg_match('/^\S+@\S+$/', $email)) {
+            $this->redirect('/admin?error=' . urlencode('That doesn\'t look like a valid email address.') . '#users');
+            return;
+        }
+        if (strlen($password) < 8) {
+            $this->redirect('/admin?error=' . urlencode('Password must be at least 8 characters.') . '#users');
+            return;
+        }
+
+        try {
+            \App\Models\User::create($name, $email, $password, $role);
+        } catch (\PDOException $e) {
+            if ((int) $e->getCode() === 23000) {
+                $this->redirect('/admin?error=' . urlencode('A user with that email already exists.') . '#users');
+                return;
+            }
+            throw $e;
+        }
+
         $this->redirect('/admin#users');
     }
 
     public function deactivateUser(string $id): void
     {
-        \App\Models\User::setActive((int) $id, false);
+        $targetId = (int) $id;
+
+        if ($targetId === $this->currentUserId()) {
+            $this->redirect('/admin?error=' . urlencode('You can\'t deactivate your own account while logged in as it.') . '#users');
+            return;
+        }
+
+        $target = \App\Models\User::find($targetId);
+        if ($target && $target['role'] === 'admin' && (bool) $target['is_active'] && \App\Models\User::countActiveAdmins() <= 1) {
+            $this->redirect('/admin?error=' . urlencode('Can\'t deactivate the last remaining active administrator — promote another user to admin first.') . '#users');
+            return;
+        }
+
+        \App\Models\User::setActive($targetId, false);
         $this->redirect('/admin#users');
     }
 
@@ -110,14 +152,48 @@ class AdminController extends Controller
     // ---- Categories --------------------------------------------------
     public function addCategory(): void
     {
-        Category::create($this->input('name'), $this->input('type', 'expense'));
+        $name = trim((string) $this->input('name', ''));
+        $type = $this->categoryType($this->input('type', 'expense'));
+        if ($name === '') {
+            $this->redirect('/admin?error=' . urlencode('Category name is required.') . '#categories');
+            return;
+        }
+        try {
+            Category::create($name, $type);
+        } catch (\PDOException $e) {
+            if ((int) $e->getCode() === 23000) {
+                $this->redirect('/admin?error=' . urlencode('A category with that name already exists.') . '#categories');
+                return;
+            }
+            throw $e;
+        }
         $this->redirect('/admin#categories');
     }
 
     public function updateCategory(string $id): void
     {
-        Category::update((int) $id, $this->input('name'), $this->input('type', 'expense'));
+        $name = trim((string) $this->input('name', ''));
+        $type = $this->categoryType($this->input('type', 'expense'));
+        if ($name === '') {
+            $this->redirect('/admin?error=' . urlencode('Category name is required.') . '#categories');
+            return;
+        }
+        try {
+            Category::update((int) $id, $name, $type);
+        } catch (\PDOException $e) {
+            if ((int) $e->getCode() === 23000) {
+                $this->redirect('/admin?error=' . urlencode('A category with that name already exists.') . '#categories');
+                return;
+            }
+            throw $e;
+        }
         $this->redirect('/admin#categories');
+    }
+
+    /** Category.type is an ENUM('expense','savings','loan') — anything else submitted falls back to 'expense' rather than letting a tampered value hit the DB as an invalid enum value. */
+    private function categoryType($value): string
+    {
+        return in_array($value, ['expense', 'savings', 'loan'], true) ? $value : 'expense';
     }
 
     public function deactivateCategory(string $id): void
@@ -141,14 +217,38 @@ class AdminController extends Controller
 
     public function deletePaymentMethod(string $id): void
     {
-        PaymentMethod::delete((int) $id);
+        try {
+            PaymentMethod::delete((int) $id);
+        } catch (\PDOException $e) {
+            if ((int) $e->getCode() === 23000) {
+                $this->redirect('/admin?error=' . urlencode('That payment method is still used by existing fixed costs or expenses — remove or reassign those first.') . '#payment-methods');
+                return;
+            }
+            throw $e;
+        }
         $this->redirect('/admin#payment-methods');
     }
 
     // ---- Lenders --------------------------------------------------------
     public function addLender(): void
     {
-        Lender::create($this->currentUserId(), $this->input('name'), (float) $this->input('initial_balance', 0), $this->input('type', 'person'), 0);
+        $name = trim((string) $this->input('name', ''));
+        $initialBalanceInput = $this->input('initial_balance', 0);
+        $initialBalance = is_numeric($initialBalanceInput) ? (float) $initialBalanceInput : null;
+        $type = $this->input('type', 'person') === 'bank' ? 'bank' : 'person';
+        if ($name === '' || $initialBalance === null || $initialBalance < 0) {
+            $this->redirect('/admin?error=' . urlencode('Enter a lender name and a non-negative opening balance.') . '#lenders');
+            return;
+        }
+        try {
+            Lender::create($this->currentUserId(), $name, $initialBalance, $type, 0);
+        } catch (\PDOException $e) {
+            if ((int) $e->getCode() === 23000) {
+                $this->redirect('/admin?error=' . urlencode('You already have a lender with that name.') . '#lenders');
+                return;
+            }
+            throw $e;
+        }
         $this->redirect('/admin#lenders');
     }
 
@@ -187,9 +287,25 @@ class AdminController extends Controller
     public function createFinancialYear(): void
     {
         $userId = $this->currentUserId();
-        $label = $this->input('label');
-        $start = $this->input('start_month'); // YYYY-MM-01
-        $end   = $this->input('end_month');
+        $label = trim((string) $this->input('label', ''));
+        $start = (string) $this->input('start_month', ''); // YYYY-MM-DD
+        $end   = (string) $this->input('end_month', '');
+
+        $startDate = \DateTime::createFromFormat('Y-m-d', $start);
+        $endDate = \DateTime::createFromFormat('Y-m-d', $end);
+        $datesValid = $startDate && $startDate->format('Y-m-d') === $start && $endDate && $endDate->format('Y-m-d') === $end;
+        if ($label === '' || !$datesValid || $startDate >= $endDate) {
+            $this->redirect('/admin?error=' . urlencode('Enter a label and a start month before the end month.') . '#financial-years');
+            return;
+        }
+        // Guards against an accidental fat-fingered range creating thousands of
+        // month rows — the loop below creates one row per calendar month.
+        $monthSpan = ($endDate->diff($startDate)->y * 12) + $endDate->diff($startDate)->m + 1;
+        if ($monthSpan > 120) {
+            $this->redirect('/admin?error=' . urlencode('That date range is too large (max 10 years) — check the start/end months.') . '#financial-years');
+            return;
+        }
+
         $yearId = FinancialYear::create($userId, $label, $start, $end);
 
         // Auto-generate the 12 monthly records (equivalent of the 12 duplicated sheets)
@@ -214,27 +330,34 @@ class AdminController extends Controller
         $this->redirect('/admin#financial-years');
     }
 
+    /** Switches which financial year is "current" — the one the Dashboard, wizard, and reports default to. FinancialYear::activate() scopes the lookup to this admin's own years, so a tampered id just fails silently rather than switching someone else's tracker. */
+    public function activateFinancialYear(string $id): void
+    {
+        FinancialYear::activate((int) $id, $this->currentUserId());
+        $this->redirect('/admin#financial-years');
+    }
+
     // ---- Backup / restore --------------------------------------------------
+    /** Pure-PHP export (Core/DatabaseBackup) — no dependency on the mysqldump CLI binary being installed/allowed, which many shared/managed hosts disable. */
     public function backup(): void
     {
-        $cfg = require dirname(__DIR__, 2) . '/config/database.php';
         $filename = 'backup_' . date('Y-m-d_His') . '.sql';
         $path = dirname(__DIR__, 2) . '/storage/backups/' . $filename;
 
-        $cmd = sprintf(
-            'mysqldump --host=%s --port=%s --user=%s %s %s > %s 2>&1',
-            escapeshellarg($cfg['host']),
-            escapeshellarg($cfg['port']),
-            escapeshellarg($cfg['username']),
-            $cfg['password'] !== '' ? '--password=' . escapeshellarg($cfg['password']) : '',
-            escapeshellarg($cfg['database']),
-            escapeshellarg($path)
-        );
-        exec($cmd, $output, $code);
-
-        if ($code !== 0 || !file_exists($path)) {
-            $this->json(['error' => 'Backup failed. Ensure mysqldump is on PATH (XAMPP: mysql/bin).'], 500);
+        $handle = fopen($path, 'w');
+        if ($handle === false) {
+            $this->json(['error' => 'Backup failed — could not write to storage/backups. Check its folder permissions.'], 500);
+            return;
         }
+
+        try {
+            \App\Core\DatabaseBackup::export($handle);
+        } catch (\Throwable $e) {
+            fclose($handle);
+            $this->json(['error' => 'Backup failed: ' . $e->getMessage()], 500);
+            return;
+        }
+        fclose($handle);
 
         header('Content-Type: application/sql');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
@@ -242,26 +365,27 @@ class AdminController extends Controller
         exit;
     }
 
+    /** Pure-PHP import (Core/DatabaseBackup) — same reasoning as backup(). Overwrites every table in the current database (uploaded file is expected to DROP+CREATE each one, matching backup()'s own format). */
     public function restore(): void
     {
-        if (empty($_FILES['backup_file']['tmp_name'])) {
-            $this->redirect('/admin?error=no-file');
+        if (empty($_FILES['backup_file']['tmp_name']) || ($_FILES['backup_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $this->redirect('/admin?error=' . urlencode('No backup file was received — choose a .sql file and try again.') . '#backup');
+            return;
         }
 
-        $cfg = require dirname(__DIR__, 2) . '/config/database.php';
-        $tmp = $_FILES['backup_file']['tmp_name'];
+        $name = (string) ($_FILES['backup_file']['name'] ?? '');
+        if (!str_ends_with(strtolower($name), '.sql')) {
+            $this->redirect('/admin?error=' . urlencode('Please upload a .sql file (the format this app\'s own Backup produces).') . '#backup');
+            return;
+        }
 
-        $cmd = sprintf(
-            'mysql --host=%s --port=%s --user=%s %s %s < %s 2>&1',
-            escapeshellarg($cfg['host']),
-            escapeshellarg($cfg['port']),
-            escapeshellarg($cfg['username']),
-            $cfg['password'] !== '' ? '--password=' . escapeshellarg($cfg['password']) : '',
-            escapeshellarg($cfg['database']),
-            escapeshellarg($tmp)
-        );
-        exec($cmd, $output, $code);
+        try {
+            \App\Core\DatabaseBackup::import($_FILES['backup_file']['tmp_name']);
+        } catch (\Throwable $e) {
+            $this->redirect('/admin?error=' . urlencode('Restore failed: ' . $e->getMessage()) . '#backup');
+            return;
+        }
 
-        $this->redirect('/admin?restored=' . ($code === 0 ? '1' : '0'));
+        $this->redirect('/admin?restored=1#backup');
     }
 }

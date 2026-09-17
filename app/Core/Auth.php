@@ -2,6 +2,7 @@
 
 namespace App\Core;
 
+use App\Models\LoginAttempt;
 use App\Models\User;
 
 /**
@@ -13,23 +14,71 @@ use App\Models\User;
  */
 class Auth
 {
+    private const MAX_FAILED_ATTEMPTS = 5;
+    private const LOCKOUT_WINDOW_SECONDS = 900; // 15 minutes
+
     public static function start(): void
     {
         if (session_status() !== PHP_SESSION_ACTIVE) {
+            // Secure is turned on automatically once the request is over HTTPS
+            // (directly, or via a reverse proxy setting X-Forwarded-Proto) — left
+            // off otherwise so local HTTP development still works. HttpOnly and
+            // SameSite=Lax are always on: the session cookie is never needed by
+            // page JS, and Lax stops it being sent on cross-site form posts.
+            $https = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
+                || (($_SERVER['SERVER_PORT'] ?? '') == 443)
+                || (strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https');
+
+            session_set_cookie_params([
+                'lifetime' => 0,
+                'path'     => '/',
+                'domain'   => '',
+                'secure'   => $https,
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
             session_start();
         }
     }
 
+    /**
+     * Throttled by normalized email regardless of whether that email maps to
+     * a real account — a nonexistent/typo'd email still accrues attempts, so
+     * probing doesn't reveal which emails exist by whether throttling ever
+     * kicks in. isLockedOut() lets the controller show a specific "too many
+     * attempts" message; this method re-checks the same limit itself so the
+     * lockout still holds even if a caller skips that check.
+     */
     public static function attempt(string $email, string $password): bool
     {
-        $user = User::findByEmail($email);
-        if (!$user || !$user['is_active'] || !User::verifyPassword($user, $password)) {
+        $normalizedEmail = User::normalizeEmail($email);
+        if (self::isLockedOut($normalizedEmail)) {
             return false;
         }
+
+        $user = User::findByEmail($email);
+        if (!$user || !$user['is_active'] || !User::verifyPassword($user, $password)) {
+            LoginAttempt::record($normalizedEmail);
+            return false;
+        }
+
+        LoginAttempt::clear($normalizedEmail);
+        // Regenerate the session id on every successful login (session fixation
+        // defense — an id an attacker planted before login must never become a
+        // valid authenticated session) and drop any pre-login CSRF token so a
+        // fresh one is issued for the now-authenticated session.
+        session_regenerate_id(true);
+        unset($_SESSION['_csrf']);
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user_name'] = $user['name'];
         $_SESSION['user_role'] = $user['role'];
         return true;
+    }
+
+    /** Call before attempt() to show a specific "too many attempts" message rather than a generic "incorrect password" on every retry during the lockout window. Accepts either a raw or already-normalized email. */
+    public static function isLockedOut(string $email): bool
+    {
+        return LoginAttempt::recentFailureCount(User::normalizeEmail($email), self::LOCKOUT_WINDOW_SECONDS) >= self::MAX_FAILED_ATTEMPTS;
     }
 
     public static function logout(): void
@@ -67,7 +116,17 @@ class Auth
         self::start();
         if (!self::check()) {
             $base = (require dirname(__DIR__, 2) . '/config/app.php')['base_path'];
-            $return = urlencode($_SERVER['REQUEST_URI'] ?? '/');
+            // REQUEST_URI already includes base_path whenever the app is
+            // deployed under a subdirectory (the normal case — see
+            // config/app.php's base_path) — strip it here the same way
+            // Router::dispatch() does before matching routes, or redirect()
+            // below prepends base_path a second time on login, producing
+            // ".../finance-ai/public/finance-ai/public/..." and a 404.
+            $requestPath = $_SERVER['REQUEST_URI'] ?? '/';
+            if ($base !== '' && str_starts_with($requestPath, $base)) {
+                $requestPath = substr($requestPath, strlen($base));
+            }
+            $return = urlencode('/' . ltrim($requestPath, '/'));
             header('Location: ' . $base . '/login?return=' . $return);
             exit;
         }

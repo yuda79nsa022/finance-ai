@@ -6,8 +6,17 @@
 # Generated at runtime, not part of the app itself
 /storage/backups/*
 /storage/exports/*
+/storage/receipts/*
 !/storage/backups/.gitkeep
 !/storage/exports/.gitkeep
+!/storage/receipts/.gitkeep
+
+# Composer dependencies — installed via `composer install` against
+# composer.lock (which IS committed, for reproducible installs), never
+# committed themselves. The app runs without this folder at all (see
+# vendor/autoload_fallback.php) — PDF/Excel export is the only thing that
+# needs it, per docs/INSTALL.md.
+/vendor/
 
 # OS / editor cruft
 .DS_Store

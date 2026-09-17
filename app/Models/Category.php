@@ -56,4 +56,30 @@ class Category
         $stmt = Database::connection()->prepare("UPDATE categories SET is_active = 1 WHERE id = ?");
         $stmt->execute([$id]);
     }
+
+    /**
+     * Best-effort category guess from a free-text description (a bank
+     * statement line, a wizard quick-add phrase) — a substring match
+     * against each active category's own name, first match wins in
+     * sort_order. Falls back to "Other" if nothing matches, or null if
+     * there's no "Other" category at all. Deliberately simple: this is a
+     * starting suggestion for the user to confirm/correct, not a claim of
+     * real classification — see StatementImporter and WizardController's
+     * quick-add parsing, both of which use it the same way.
+     */
+    public static function guessFromText(string $text): ?int
+    {
+        $categories = self::all();
+        foreach ($categories as $cat) {
+            if (stripos($text, $cat['name']) !== false) {
+                return (int) $cat['id'];
+            }
+        }
+        foreach ($categories as $cat) {
+            if (strcasecmp($cat['name'], 'Other') === 0) {
+                return (int) $cat['id'];
+            }
+        }
+        return null;
+    }
 }

@@ -38,24 +38,27 @@ class IncomeModel
         return (int) Database::connection()->lastInsertId();
     }
 
-    public static function update(int $id, string $source, float $amount, ?string $notes = null): void
+    /** Scoped to $monthId so one user can never edit another user's income row by guessing/tampering an id — the caller must have already verified $monthId belongs to the requesting user. */
+    public static function update(int $id, int $monthId, string $source, float $amount, ?string $notes = null): void
     {
         $stmt = Database::connection()->prepare(
-            "UPDATE income_entries SET source = ?, amount = ?, notes = ? WHERE id = ?"
+            "UPDATE income_entries SET source = ?, amount = ?, notes = ? WHERE id = ? AND month_id = ?"
         );
-        $stmt->execute([$source, $amount, $notes, $id]);
+        $stmt->execute([$source, $amount, $notes, $id, $monthId]);
     }
 
-    public static function find(int $id): ?array
+    /** Scoped to $monthId — see update(). */
+    public static function find(int $id, int $monthId): ?array
     {
-        $stmt = Database::connection()->prepare("SELECT * FROM income_entries WHERE id = ?");
-        $stmt->execute([$id]);
+        $stmt = Database::connection()->prepare("SELECT * FROM income_entries WHERE id = ? AND month_id = ?");
+        $stmt->execute([$id, $monthId]);
         return $stmt->fetch() ?: null;
     }
 
-    public static function delete(int $id): void
+    /** Scoped to $monthId — see update(). */
+    public static function delete(int $id, int $monthId): void
     {
-        $stmt = Database::connection()->prepare("DELETE FROM income_entries WHERE id = ?");
-        $stmt->execute([$id]);
+        $stmt = Database::connection()->prepare("DELETE FROM income_entries WHERE id = ? AND month_id = ?");
+        $stmt->execute([$id, $monthId]);
     }
 }

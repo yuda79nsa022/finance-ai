@@ -15,6 +15,38 @@ use App\Controllers\AdvisorController;
 $appConfig = require dirname(__DIR__) . '/config/app.php';
 date_default_timezone_set($appConfig['timezone']);
 
+// Started once, globally, before routing: every page (including the login
+// form) needs a session available to read/generate its CSRF token, and
+// Router::dispatch() needs $_SESSION available to verify one on every POST.
+\App\Core\Auth::start();
+
+// Security response headers, set on every response (including 404s/errors)
+// since this happens before routing. script-src/style-src need 'unsafe-inline'
+// because the app's views use plain inline <script> blocks and inline
+// style="" attributes (no build step / nonce plumbing exists) — everything
+// else is locked down to same-origin plus the one CDN host the layout
+// actually loads from (cdnjs.cloudflare.com, for Bootstrap/Chart.js/icons).
+header("Content-Security-Policy: default-src 'self'; "
+    . "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+    . "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+    . "font-src 'self' https://cdnjs.cloudflare.com; "
+    . "img-src 'self' data:; "
+    // Some Chromium-based browsers (observed in Brave) classify a plain
+    // <script src>/<link> load from a cross-origin host under connect-src
+    // rather than script-src/style-src in certain cases, blocking the
+    // Bootstrap CDN load entirely — script-src/style-src above already
+    // scope this same host down to exactly what's needed, so allowing it
+    // here too doesn't grant anything beyond that.
+    . "connect-src 'self' https://cdnjs.cloudflare.com; "
+    . "object-src 'none'; "
+    . "base-uri 'self'; "
+    . "form-action 'self'; "
+    . "frame-ancestors 'none';");
+header('X-Frame-Options: DENY');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header('Permissions-Policy: geolocation=(), microphone=(), payment=(), usb=()');
+
 $router = new Router();
 
 // Auth
@@ -38,6 +70,10 @@ $router->post('/month/{id}/fixed-cost/{entryId}/delete', [MonthController::class
 $router->post('/month/{id}/expense', [MonthController::class, 'addExpense']);
 $router->post('/month/{id}/expense/{entryId}/update', [MonthController::class, 'updateExpense']);
 $router->post('/month/{id}/expense/{entryId}/delete', [MonthController::class, 'deleteExpense']);
+$router->post('/month/{id}/expense/scan', [MonthController::class, 'scanReceipt']);
+$router->get('/month/{id}/expense/{entryId}/receipt', [MonthController::class, 'receiptImage']);
+$router->post('/month/{id}/expense/import', [MonthController::class, 'importStatement']);
+$router->post('/month/{id}/expense/import/confirm', [MonthController::class, 'confirmImportStatement']);
 $router->post('/month/{id}/loan', [MonthController::class, 'addLoan']);
 $router->post('/month/{id}/loan/{lenderId}/update', [MonthController::class, 'updateLoan']);
 $router->post('/month/{id}/loan/{lenderId}/delete', [MonthController::class, 'deleteLoan']);
@@ -61,6 +97,7 @@ $router->post('/admin/lender', [AdminController::class, 'addLender']);
 $router->post('/admin/lender/{id}/deactivate', [AdminController::class, 'deactivateLender']);
 $router->post('/admin/lender/{id}/activate', [AdminController::class, 'activateLender']);
 $router->post('/admin/financial-year', [AdminController::class, 'createFinancialYear']);
+$router->post('/admin/financial-year/{id}/activate', [AdminController::class, 'activateFinancialYear']);
 $router->get('/admin/backup', [AdminController::class, 'backup']);
 $router->post('/admin/restore', [AdminController::class, 'restore']);
 $router->post('/admin/user', [AdminController::class, 'addUser']);

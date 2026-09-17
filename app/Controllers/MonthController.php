@@ -2,8 +2,10 @@
 
 namespace App\Controllers;
 
+use App\Core\AIClient;
 use App\Core\Controller;
 use App\Core\MonthCalculator;
+use App\Core\ReceiptScanner;
 use App\Models\Category;
 use App\Models\ExpenseModel;
 use App\Models\FixedCostModel;
@@ -50,6 +52,7 @@ class MonthController extends Controller
         // Loan modal.
         $fixedCosts = FixedCostModel::forMonth($month['id']);
         foreach ($fixedCosts as &$fcRow) {
+            $fcRow['lender_initial_balance'] = null; // always present so the view never hits an undefined array key on a non-loan row
             if (($fcRow['category_type'] ?? null) === 'loan') {
                 $lender = Lender::findByNameAny($fcRow['item'], $this->currentUserId());
                 $fcRow['lender_initial_balance'] = $lender ? (float) $lender['initial_balance'] : null;
@@ -78,7 +81,13 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        IncomeModel::add($month['id'], $this->input('source'), (float) $this->input('amount'), $this->input('notes'));
+        $source = trim((string) $this->input('source', ''));
+        $amount = $this->validAmount($this->input('amount'));
+        if ($source === '' || $amount === null) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Enter a source and an amount greater than zero.'));
+            return;
+        }
+        IncomeModel::add($month['id'], $source, $amount, $this->input('notes'));
         $this->redirect('/month/' . $month['id']);
     }
 
@@ -86,7 +95,13 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        IncomeModel::update((int) $id, $this->input('source'), (float) $this->input('amount'), $this->input('notes'));
+        $source = trim((string) $this->input('source', ''));
+        $amount = $this->validAmount($this->input('amount'));
+        if ($source === '' || $amount === null) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Enter a source and an amount greater than zero.'));
+            return;
+        }
+        IncomeModel::update((int) $id, $month['id'], $source, $amount, $this->input('notes'));
         $this->redirect('/month/' . $month['id']);
     }
 
@@ -94,7 +109,7 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        IncomeModel::delete((int) $id);
+        IncomeModel::delete((int) $id, $month['id']);
         $this->redirect('/month/' . $monthId);
     }
 
@@ -102,14 +117,21 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        $item = $this->input('item');
+        $item = trim((string) $this->input('item', ''));
         $categoryId = (int) $this->input('category_id');
+        $amount = $this->validAmount($this->input('amount'));
+        $dueDay = $this->input('due_day');
+        $paymentMethodId = $this->input('payment_method_id');
+        if (!$this->fixedCostInputValid($item, $categoryId, $amount, $dueDay, $paymentMethodId)) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Check the fixed cost fields — an item, a valid category, an amount greater than zero, a due day of 1-31 (or blank), and a valid payment method (or blank) are required.'));
+            return;
+        }
         FixedCostModel::add($month['id'], [
             'item'              => $item,
             'category_id'       => $categoryId,
-            'amount'            => (float) $this->input('amount'),
-            'due_day'           => $this->input('due_day') ?: null,
-            'payment_method_id' => $this->input('payment_method_id') ?: null,
+            'amount'            => $amount,
+            'due_day'           => $dueDay ?: null,
+            'payment_method_id' => $paymentMethodId ?: null,
             'notes'             => $this->input('notes'),
         ]);
         $this->applyLoanOpeningBalance($item, $categoryId, $this->input('opening_balance'), $this->currentUserId());
@@ -121,16 +143,23 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        $item = $this->input('item');
+        $item = trim((string) $this->input('item', ''));
         $categoryId = (int) $this->input('category_id');
+        $amount = $this->validAmount($this->input('amount'));
+        $dueDay = $this->input('due_day');
+        $paymentMethodId = $this->input('payment_method_id');
+        if (!$this->fixedCostInputValid($item, $categoryId, $amount, $dueDay, $paymentMethodId)) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Check the fixed cost fields — an item, a valid category, an amount greater than zero, a due day of 1-31 (or blank), and a valid payment method (or blank) are required.'));
+            return;
+        }
         FixedCostModel::update((int) $id, [
             'item'              => $item,
             'category_id'       => $categoryId,
-            'amount'            => (float) $this->input('amount'),
-            'due_day'           => $this->input('due_day') ?: null,
-            'payment_method_id' => $this->input('payment_method_id') ?: null,
+            'amount'            => $amount,
+            'due_day'           => $dueDay ?: null,
+            'payment_method_id' => $paymentMethodId ?: null,
             'notes'             => $this->input('notes'),
-        ]);
+        ], $month['id']);
         $this->applyLoanOpeningBalance($item, $categoryId, $this->input('opening_balance'), $this->currentUserId());
         LoanLedgerModel::recalculateMonth($month['id']); // amount may feed a lender's installment
         $this->redirect('/month/' . $month['id']);
@@ -176,7 +205,7 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        FixedCostModel::delete((int) $id);
+        FixedCostModel::delete((int) $id, $month['id']);
         LoanLedgerModel::recalculateMonth((int) $monthId);
         $this->redirect('/month/' . $monthId);
     }
@@ -190,11 +219,11 @@ class MonthController extends Controller
         $name = trim((string) $this->input('name'));
         $type = $this->input('type', 'person') === 'bank' ? 'bank' : 'person';
         $categoryId = $this->categoryIdForLoan($this->input('category_id'), $type);
-        $initialBalance = (float) $this->input('initial_balance', 0);
-        $payment = (float) $this->input('payment', 0);
+        $initialBalance = $this->validNonNegative($this->input('initial_balance', 0));
+        $payment = $this->validNonNegative($this->input('payment', 0));
 
-        if ($name === '') {
-            $this->redirect('/month/' . $month['id']);
+        if ($name === '' || $initialBalance === null || $payment === null) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Enter a lender name and non-negative amounts.'));
             return;
         }
 
@@ -247,8 +276,13 @@ class MonthController extends Controller
         }
         $newType = $this->input('type', 'person') === 'bank' ? 'bank' : 'person';
         $categoryId = $this->categoryIdForLoan($this->input('category_id'), $newType);
-        $initialBalance = (float) $this->input('initial_balance', 0);
-        $payment = (float) $this->input('payment', 0);
+        $initialBalance = $this->validNonNegative($this->input('initial_balance', 0));
+        $payment = $this->validNonNegative($this->input('payment', 0));
+
+        if ($initialBalance === null || $payment === null) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Enter non-negative amounts for the loan.'));
+            return;
+        }
 
         if ($newName !== $lender['name']) {
             FixedCostModel::renameLoanItem($lender['name'], $newName, $userId);
@@ -264,7 +298,7 @@ class MonthController extends Controller
                 'due_day'           => $existingRow['due_day'],
                 'payment_method_id' => $existingRow['payment_method_id'],
                 'notes'             => $existingRow['notes'],
-            ]);
+            ], $month['id']);
         } elseif ($payment > 0) {
             FixedCostModel::add($month['id'], [
                 'item'        => $newName,
@@ -294,27 +328,248 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
+        $date = $this->validDate($this->input('expense_date'));
+        $amount = $this->validAmount($this->input('amount'));
+        $categoryId = (int) $this->input('category_id');
+        $paymentMethodId = $this->input('payment_method_id');
+        if ($date === null || $amount === null || !$this->categoryValid($categoryId) || !$this->paymentMethodValid($paymentMethodId)) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Check the expense fields — a valid date, a valid category, an amount greater than zero, and a valid payment method (or blank) are required.'));
+            return;
+        }
         ExpenseModel::add($month['id'], [
-            'expense_date'      => $this->input('expense_date'),
-            'amount'            => (float) $this->input('amount'),
-            'category_id'       => (int) $this->input('category_id'),
+            'expense_date'      => $date,
+            'amount'            => $amount,
+            'category_id'       => $categoryId,
             'description'       => $this->input('description'),
-            'payment_method_id' => $this->input('payment_method_id') ?: null,
+            'payment_method_id' => $paymentMethodId ?: null,
+            'receipt_path'      => $this->ownedReceiptPath($this->input('receipt_path')),
         ]);
         $this->redirect('/month/' . $month['id']);
+    }
+
+    /**
+     * Uploads a receipt photo and asks the configured AI provider (Settings
+     * > AI Advisor — Anthropic/OpenAI only, see AIClient::visionExtract())
+     * to read it: date, amount, merchant, and a best-guess category from
+     * this app's own category list. Returns the extracted fields as JSON
+     * for the Add Expense form to pre-fill — nothing is saved to the
+     * Variable Expenses Log here; the user still reviews and clicks Add,
+     * same as manual entry, since a misread amount/category is exactly the
+     * kind of mistake that must be easy to catch before it becomes real
+     * financial data.
+     */
+    public function scanReceipt(string $monthId): void
+    {
+        $month = $this->requireMonth((int) $monthId);
+        $this->denyIfLocked($month);
+
+        $uploadError = $_FILES['receipt']['error'] ?? UPLOAD_ERR_NO_FILE;
+        if ($uploadError === UPLOAD_ERR_INI_SIZE || $uploadError === UPLOAD_ERR_FORM_SIZE) {
+            $this->json(['ok' => false, 'error' => 'That photo is larger than this server currently accepts (server limit: ' . ini_get('upload_max_filesize') . '). Try a smaller/lower-resolution photo, or enter the expense manually.']);
+            return;
+        }
+        if (empty($_FILES['receipt']['tmp_name']) || $uploadError !== UPLOAD_ERR_OK) {
+            $this->json(['ok' => false, 'error' => 'No image was received — choose a photo and try again.']);
+            return;
+        }
+
+        $tmpPath = $_FILES['receipt']['tmp_name'];
+        if ((int) $_FILES['receipt']['size'] > 8 * 1024 * 1024) {
+            $this->json(['ok' => false, 'error' => 'That image is too large (max 8MB) — try a smaller photo.']);
+            return;
+        }
+
+        $mime = function_exists('mime_content_type') ? mime_content_type($tmpPath) : (string) ($_FILES['receipt']['type'] ?? '');
+        $allowedExtensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/heic' => 'heic', 'image/heif' => 'heif'];
+        if (!isset($allowedExtensions[$mime])) {
+            $this->json(['ok' => false, 'error' => 'Please upload a JPG, PNG, WEBP, or HEIC photo of the receipt.']);
+            return;
+        }
+
+        if (!AIClient::isConfigured()) {
+            $this->json(['ok' => false, 'error' => 'Receipt scanning needs the AI Advisor configured first — ask an admin to add a Claude or ChatGPT API key in Settings > AI Advisor. You can still add this expense manually.']);
+            return;
+        }
+
+        $userId = $this->currentUserId();
+        $dir = dirname(__DIR__, 2) . '/storage/receipts/' . $userId;
+        if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
+            $this->json(['ok' => false, 'error' => 'Could not save the uploaded image on the server.']);
+            return;
+        }
+        $filename = bin2hex(random_bytes(16)) . '.' . $allowedExtensions[$mime];
+        if (!move_uploaded_file($tmpPath, $dir . '/' . $filename)) {
+            $this->json(['ok' => false, 'error' => 'Could not save the uploaded image on the server.']);
+            return;
+        }
+
+        $result = ReceiptScanner::extract($dir . '/' . $filename, $mime, Category::all());
+        $result['receipt_path'] = $userId . '/' . $filename; // kept even on ok:false, so a failed read can still be attached manually
+        $this->json($result);
+    }
+
+    /**
+     * Parses an uploaded bank statement export (CSV/XLS/XLSX) into candidate
+     * Variable Expense rows and returns them for review — like scanReceipt(),
+     * nothing is saved here. The browser shows the parsed rows in an
+     * editable table (with likely duplicates pre-flagged) and the user
+     * confirms which ones to actually import via confirmImportStatement().
+     */
+    public function importStatement(string $monthId): void
+    {
+        $month = $this->requireMonth((int) $monthId);
+        $this->denyIfLocked($month);
+
+        if (!file_exists(dirname(__DIR__, 2) . '/vendor/autoload.php')) {
+            $this->json(['ok' => false, 'error' => 'Statement import needs one extra library — run "composer install" in the project root first (see docs/INSTALL.md).']);
+            return;
+        }
+
+        $uploadError = $_FILES['statement']['error'] ?? UPLOAD_ERR_NO_FILE;
+        if ($uploadError === UPLOAD_ERR_INI_SIZE || $uploadError === UPLOAD_ERR_FORM_SIZE) {
+            $this->json(['ok' => false, 'error' => 'That file is larger than this server currently accepts (server limit: ' . ini_get('upload_max_filesize') . '). Try exporting a shorter date range.']);
+            return;
+        }
+        if (empty($_FILES['statement']['tmp_name']) || $uploadError !== UPLOAD_ERR_OK) {
+            $this->json(['ok' => false, 'error' => 'No file was received — choose a CSV or Excel file and try again.']);
+            return;
+        }
+
+        $ext = strtolower(pathinfo((string) ($_FILES['statement']['name'] ?? ''), PATHINFO_EXTENSION));
+        if (!in_array($ext, ['csv', 'xlsx', 'xls', 'pdf'], true)) {
+            $this->json(['ok' => false, 'error' => 'Please upload a .csv, .xlsx, .xls, or .pdf statement from your bank\'s online banking.']);
+            return;
+        }
+
+        $result = \App\Core\StatementImporter::parse($_FILES['statement']['tmp_name'], $month['id'], $ext);
+        $this->json($result);
+    }
+
+    /**
+     * Saves the rows the user kept checked in the statement-import review
+     * table. Every row goes through the same validation as a single manual
+     * add (validAmount/validDate/categoryValid) — the parser's own output
+     * is trusted no further than anything else reaching this endpoint,
+     * since the browser could have altered it before submitting. All rows
+     * are validated before any are saved, so a single bad row rejects the
+     * whole batch rather than importing part of it silently.
+     */
+    public function confirmImportStatement(string $monthId): void
+    {
+        $month = $this->requireMonth((int) $monthId);
+        $this->denyIfLocked($month);
+
+        $body = json_decode((string) file_get_contents('php://input'), true);
+        $submittedRows = is_array($body['rows'] ?? null) ? $body['rows'] : [];
+
+        if (!$submittedRows) {
+            $this->json(['ok' => false, 'error' => 'No rows were selected to import.']);
+            return;
+        }
+        if (count($submittedRows) > 500) {
+            $this->json(['ok' => false, 'error' => 'That\'s too many rows for one import (max 500) — export a shorter date range and try again.']);
+            return;
+        }
+
+        $validated = [];
+        foreach ($submittedRows as $i => $row) {
+            $row = is_array($row) ? $row : [];
+            $date = $this->validDate($row['expense_date'] ?? null);
+            $amount = $this->validAmount($row['amount'] ?? null);
+            $categoryId = (int) ($row['category_id'] ?? 0);
+            if ($date === null || $amount === null || !$this->categoryValid($categoryId)) {
+                $this->json(['ok' => false, 'error' => 'Row ' . ($i + 1) . ' has an invalid date, amount, or category — fix it in the table and try again.']);
+                return;
+            }
+            $validated[] = [
+                'expense_date'      => $date,
+                'amount'            => $amount,
+                'category_id'       => $categoryId,
+                'description'       => isset($row['description']) && trim((string) $row['description']) !== '' ? trim((string) $row['description']) : null,
+                'payment_method_id' => null,
+            ];
+        }
+
+        foreach ($validated as $row) {
+            ExpenseModel::add($month['id'], $row);
+        }
+
+        $this->json(['ok' => true, 'imported' => count($validated)]);
+    }
+
+    /** Streams a receipt image back only to the user who owns the expense it's attached to — never served directly, always through this ownership check. */
+    public function receiptImage(string $monthId, string $expenseId): void
+    {
+        $month = $this->requireMonth((int) $monthId);
+        $expense = ExpenseModel::find((int) $expenseId, $month['id']);
+        if (!$expense || empty($expense['receipt_path'])) {
+            http_response_code(404);
+            echo 'Receipt not found.';
+            exit;
+        }
+
+        $base = realpath(dirname(__DIR__, 2) . '/storage/receipts');
+        $path = realpath($base . '/' . $expense['receipt_path']);
+        if ($base === false || $path === false || !str_starts_with($path, $base . DIRECTORY_SEPARATOR)) {
+            http_response_code(404);
+            echo 'Receipt not found.';
+            exit;
+        }
+
+        header('Content-Type: ' . (function_exists('mime_content_type') ? mime_content_type($path) : 'application/octet-stream'));
+        header('Cache-Control: private, max-age=3600');
+        header('Content-Disposition: inline; filename="receipt.' . pathinfo($path, PATHINFO_EXTENSION) . '"');
+        readfile($path);
+        exit;
+    }
+
+    /**
+     * Only trusts a receipt_path that (a) is prefixed with this user's own
+     * id (scanReceipt() always saves under storage/receipts/{userId}/, so a
+     * legitimately-scanned path always starts that way) and (b) resolves to
+     * a real file actually inside storage/receipts — rejects everything
+     * else rather than trusting client input, since this value comes back
+     * from a hidden form field the browser could have tampered with to
+     * point at another user's uploaded receipt or an arbitrary path.
+     */
+    private function ownedReceiptPath($path): ?string
+    {
+        $path = trim((string) $path);
+        if ($path === '') {
+            return null;
+        }
+        if (!str_starts_with($path, $this->currentUserId() . '/')) {
+            return null;
+        }
+
+        $base = realpath(dirname(__DIR__, 2) . '/storage/receipts');
+        $resolved = realpath($base . '/' . $path);
+        if ($base === false || $resolved === false || !str_starts_with($resolved, $base . DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+
+        return $path;
     }
 
     public function updateExpense(string $monthId, string $id): void
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
+        $date = $this->validDate($this->input('expense_date'));
+        $amount = $this->validAmount($this->input('amount'));
+        $categoryId = (int) $this->input('category_id');
+        $paymentMethodId = $this->input('payment_method_id');
+        if ($date === null || $amount === null || !$this->categoryValid($categoryId) || !$this->paymentMethodValid($paymentMethodId)) {
+            $this->redirect('/month/' . $month['id'] . '?error=' . urlencode('Check the expense fields — a valid date, a valid category, an amount greater than zero, and a valid payment method (or blank) are required.'));
+            return;
+        }
         ExpenseModel::update((int) $id, [
-            'expense_date'      => $this->input('expense_date'),
-            'amount'            => (float) $this->input('amount'),
-            'category_id'       => (int) $this->input('category_id'),
+            'expense_date'      => $date,
+            'amount'            => $amount,
+            'category_id'       => $categoryId,
             'description'       => $this->input('description'),
-            'payment_method_id' => $this->input('payment_method_id') ?: null,
-        ]);
+            'payment_method_id' => $paymentMethodId ?: null,
+        ], $month['id']);
         $this->redirect('/month/' . $month['id']);
     }
 
@@ -322,20 +577,23 @@ class MonthController extends Controller
     {
         $month = $this->requireMonth((int) $monthId);
         $this->denyIfLocked($month);
-        ExpenseModel::delete((int) $id);
+        ExpenseModel::delete((int) $id, $month['id']);
         $this->redirect('/month/' . $monthId);
     }
 
+    /** Ownership-checked like every other write in this controller — lock/unlock previously skipped this and let any logged-in user toggle any other user's month by id. */
     public function lock(string $monthId): void
     {
-        MonthModel::setLocked((int) $monthId, true);
-        $this->redirect('/month/' . $monthId);
+        $month = $this->requireMonth((int) $monthId);
+        MonthModel::setLocked($month['id'], true);
+        $this->redirect('/month/' . $month['id']);
     }
 
     public function unlock(string $monthId): void
     {
-        MonthModel::setLocked((int) $monthId, false);
-        $this->redirect('/month/' . $monthId);
+        $month = $this->requireMonth((int) $monthId);
+        MonthModel::setLocked($month['id'], false);
+        $this->redirect('/month/' . $month['id']);
     }
 
     /** Duplicate this month's Fixed Costs + Income into the next calendar month within the same financial year. */
@@ -362,6 +620,65 @@ class MonthController extends Controller
     }
 
     /** Loads a month only if it belongs to the logged-in user — every user has their own separate tracker, so a month id that exists but belongs to someone else must 404 exactly like one that doesn't exist at all. */
+    /** A real transaction amount: numeric and strictly greater than zero. Returns null (invalid) for anything else, including garbage strings — (float) casting those would otherwise silently become 0. */
+    private function validAmount($value): ?float
+    {
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $amount = (float) $value;
+        return $amount > 0 ? $amount : null;
+    }
+
+    /** For fields that can legitimately be zero (a loan's opening balance or this month's payment before anything's been paid) but never negative or garbage. */
+    private function validNonNegative($value): ?float
+    {
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $amount = (float) $value;
+        return $amount >= 0 ? $amount : null;
+    }
+
+    private function categoryValid(int $id): bool
+    {
+        return Category::find($id) !== null;
+    }
+
+    /** Payment method is always optional — blank passes; a non-blank value must reference a real row, or the FK constraint would otherwise surface as a raw fatal error. */
+    private function paymentMethodValid($value): bool
+    {
+        if ($value === null || $value === '') {
+            return true;
+        }
+        return PaymentMethod::find((int) $value) !== null;
+    }
+
+    private function dueDayValid($value): bool
+    {
+        if ($value === null || $value === '') {
+            return true;
+        }
+        return is_numeric($value) && (int) $value >= 1 && (int) $value <= 31;
+    }
+
+    /** Strict Y-m-d parse — rejects "0000-00-00", "not-a-date", trailing garbage, etc. rather than letting an unparseable string reach the DATE column. */
+    private function validDate($value): ?string
+    {
+        $value = (string) $value;
+        $date = \DateTime::createFromFormat('Y-m-d', $value);
+        return ($date && $date->format('Y-m-d') === $value) ? $value : null;
+    }
+
+    private function fixedCostInputValid(string $item, int $categoryId, ?float $amount, $dueDay, $paymentMethodId): bool
+    {
+        return $item !== ''
+            && $amount !== null
+            && $this->categoryValid($categoryId)
+            && $this->dueDayValid($dueDay)
+            && $this->paymentMethodValid($paymentMethodId);
+    }
+
     private function requireMonth(int $id): array
     {
         $month = MonthModel::findOwned($id, $this->currentUserId());

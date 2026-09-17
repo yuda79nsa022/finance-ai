@@ -11,6 +11,7 @@
 
 <script>
 const answerUrl = '<?= base_url('/wizard/answer') ?>';
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 const log = document.getElementById('wizardLog');
 const inputArea = document.getElementById('wizardInputArea');
 
@@ -106,7 +107,7 @@ function submitAnswer(value) {
 
   fetch(answerUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken },
     body: 'answer=' + encodeURIComponent(value)
   })
   .then(r => r.json())

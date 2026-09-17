@@ -147,6 +147,8 @@ CREATE TABLE expenses (
   category_id       INT UNSIGNED NOT NULL,             -- Column D
   description       VARCHAR(255)  NULL,                 -- Column E
   payment_method_id INT UNSIGNED NULL,                  -- Column F
+  receipt_path      VARCHAR(255)  NULL,                 -- relative path under storage/receipts/, e.g. "3/ab12....jpg" — set when this
+                                                          -- expense was added from a scanned receipt photo (see ReceiptScanner/MonthController::scanReceipt)
   created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_exp_month    FOREIGN KEY (month_id) REFERENCES months(id) ON DELETE CASCADE,
   CONSTRAINT fk_exp_category FOREIGN KEY (category_id) REFERENCES categories(id),
@@ -240,6 +242,22 @@ CREATE TABLE ai_settings (
   model      VARCHAR(100) NOT NULL DEFAULT '',
   prompt     TEXT NULL,                            -- custom system prompt template; NULL/blank falls back to AiSettings::DEFAULT_PROMPT
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- login_attempts : failed-login throttle (Core/Auth::attempt()).
+-- One row per failed attempt, keyed by the normalized email that was
+-- typed in — not tied to a user id, since the account may not even
+-- exist (a typo'd or guessed email still gets throttled). Auth counts
+-- rows within the last N minutes to decide whether to lock that email
+-- out; Auth::attempt() prunes rows older than a day on every failure so
+-- this never grows unbounded on a personal-scale install.
+-- ---------------------------------------------------------------------
+CREATE TABLE login_attempts (
+  id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  email        VARCHAR(150) NOT NULL,
+  attempted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_login_attempts_email_time (email, attempted_at)
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
